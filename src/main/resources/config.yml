@@ -102,7 +102,6 @@ login-rewards:
     volume: 0.75
     pitch: 1.0
 
-
 help:
   # How many chat lines to show per page
   lines-per-page: 3
