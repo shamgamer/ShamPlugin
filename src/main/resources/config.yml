@@ -88,6 +88,7 @@ update-checker:
   notify-console: true # Notify in console after server start + at interval hours
   notify-ops: true # Notify in player's chat at interval hours
   notify-ops-on-login: true # Notify in player's chat at login for ops
+  notify-ops-on-login-delay-ticks: 150 # Delay in tick after an op joins where they will be notified.
 
 login-rewards:
   enabled: true

@@ -13,3 +13,10 @@
 this projects has used AI in its development.
 
 known working versions: 1.2.11 purpur
+
+## Dependencies
+### Hard Dependencies (required)
+* none
+### Soft Dependencies (optional)
+* PlaceholderAPI
+* AxRewards
