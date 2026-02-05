@@ -5,6 +5,9 @@ authors: ["shamgamer"]
 description: "Build Time: ${build.time}"
 main: win.kakchuserver.Manager
 api-version: 1.21
+softdepend:
+  - PlaceholderAPI
+  - AxRewards
 
 commands:
   map:
@@ -34,6 +37,9 @@ permissions:
     description: Allows usage of /help command
   kakchuplugin.uptime:
     description: Allows usage of /uptime command
+    default: true
+  kakchuplugin.loginrewards:
+    description: Allows login reward reminder message
     default: true
 
 build-time: ${build.time}

@@ -66,6 +66,10 @@ public class Manager extends JavaPlugin {
             tracker = null;
         }
 
+        // === Enable Login Notifications for players ===
+        // separate from update notifications
+        new PlayerNotifier(this).register();
+
         // === Auto-register all commands from plugin.yml ===
         @SuppressWarnings("deprecation") // Paper deprecates getDescription(), but it is still the simplest reliable way.
         var commands = getDescription().getCommands();

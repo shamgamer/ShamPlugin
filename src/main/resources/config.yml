@@ -89,6 +89,20 @@ update-checker:
   notify-ops: true # Notify in player's chat at interval hours
   notify-ops-on-login: true # Notify in player's chat at login for ops
 
+login-rewards:
+  enabled: true
+  delay-ticks: 300
+  placeholder: "%axrewards_collectable%"
+  command: "/daily"
+  message-single: "<gold>You have <yellow><count></yellow> unclaimed reward! Use <green><cmd></green> to claim it."
+  message-multiple: "<gold>You have <yellow><count></yellow> unclaimed rewards! Use <green><cmd></green> to claim them."
+  sound:
+    enabled: true
+    name: "entity.experience_orb.pickup"
+    volume: 0.75
+    pitch: 1.0
+
+
 help:
   # How many chat lines to show per page
   lines-per-page: 3
