@@ -13,11 +13,11 @@ discord alerts:
     - "Geyser is configured to use proxy protocol when connecting to the Java server."
 
 links:
-  map-url: ""
+  map-url: "" # the link that will be sent when using /map
 
 uptime:
   flush-interval-seconds: 1
-  retention-days: -1
+  retention-days: -1 # the amount of days it keeps uptime logs, -1 is infinite.
   merge-gap-ms: 1000
 
 restarter: # All values are in server ticks, minecraft usually runs at 20 ticks per second.
@@ -81,24 +81,24 @@ restarter: # All values are in server ticks, minecraft usually runs at 20 ticks 
 
 update-checker:
   enabled: true
-  project-id: "w6F3AvdX"
+  project-id: "w6F3AvdX" # the modrinth id for update checks, default is "w6F3AvdX"
   loaders: ["purpur", "paper"]
   include-prerelease: true # false will ignore beta and alpha versions
   interval-hours: 12
   notify-console: true # Notify in console after server start + at interval hours
   notify-ops: true # Notify in player's chat at interval hours
   notify-ops-on-login: true # Notify in player's chat at login for ops
-  notify-ops-on-login-delay-ticks: 150 # Delay in tick after an op joins where they will be notified.
+  notify-ops-on-login-delay-ticks: 75 # Delay in tick after an op joins where they will be notified.
 
 login-rewards:
-  enabled: true
-  delay-ticks: 300
-  placeholder: "%axrewards_collectable%"
-  command: "/daily"
-  message-single: "<gold>You have <yellow><count></yellow> unclaimed reward! Use <green><cmd></green> to claim it."
-  message-multiple: "<gold>You have <yellow><count></yellow> unclaimed rewards! Use <green><cmd></green> to claim them."
+  enabled: true # toggle for login rewards check
+  delay-ticks: 300 # delay in ticks after a player joins before the message is sent
+  placeholder: "%axrewards_collectable%" # The placeholder it will check if it's larger than 1
+  command: "/daily" # The command that will be activated when clicking, use <cmd> to put it in the message.
+  message-single: "<gold>You have <yellow><count></yellow> unclaimed reward! Use <green><cmd></green> to claim it." # message that is sent if placeholder returns 1
+  message-multiple: "<gold>You have <yellow><count></yellow> unclaimed rewards! Use <green><cmd></green> to claim them." # message that is sent if placeholder returns a number larger than 1
   sound:
-    enabled: true
+    enabled: true # toggle for sound the message
     name: "entity.experience_orb.pickup"
     volume: 0.75
     pitch: 1.0
@@ -140,6 +140,12 @@ help:
       description: "Delete a home"
     - command: "/graves list"
       description: "List your graves"
+    - command: "/rewards"
+      description: "Opens the money login rewards menu"
+    - command: "/order"
+      description: "Opens the orders menu"
+    - command: "/ah"
+      description: "Opens the auction house menu"
     - command: "/hat"
       description: "Wear the item in your hand as a hat (requires cacti rank)"
     - command: "/afk"
@@ -164,15 +170,17 @@ help:
       description: "Belly flop!"
     - command: "/uptime"
       description: "Show server uptime statistics"
-    - command: "[inv]"
-      description: "sends your inventory in chat"
-    - command: "[i]"
-      description: "sends your held item in chat"
-    - command: "[e]"
-      description: "sends your ender chest in chat"
-    - command: "[pos]"
-      description: "sends your cords in chat"
-    - command: "[ping]"
-      description: "sends your ping in chat"
-    - command: "[gametime]"
-      description: "sends the current game time in chat"
+    - command: "/shop create <price>"
+      description: "Makes the container you are looking at into a shop of your held item with the stated price, right click to modify"
+    - command: "/shop discord"
+      description: "Modify discord bot alerts for shop events"
+    - command: "/shop limit"
+      description: "Set how many items each player can buy for a spesific ammount of time"
+    - command: "/bal"
+      description: "Show how much money you have"
+    - command: "baltop"
+      description: "Show the money leaderboard"
+    - command: "/shop discount"
+      description: "create, delete, set or unset a discount code for a shop"
+    - command: "/shop list"
+      description: "Shows a list of your shops"
