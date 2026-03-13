@@ -263,9 +263,11 @@ public class Alerts extends Handler {
             Throwable thrown = record.getThrown();
 
             // Raw formatted (for backwards-compat ignore patterns)
-            String formattedRaw = formatRecordRaw(record, bodyRaw, thrown);
+            String formattedRaw = formatAlert(record.getLevel() == null ? "WARN" : record.getLevel().toString(),
+                    record.getLoggerName(), bodyRaw, record.getMillis(), thrown, false);
             // Sanitized formatted (what we actually send)
-            String formattedSan = formatRecordSanitized(record, bodySan, thrown);
+            String formattedSan = formatAlert(record.getLevel() == null ? "WARN" : record.getLevel().toString(),
+                    record.getLoggerName(), bodySan, record.getMillis(), thrown, true);
 
             if (shouldIgnoreStrings(formattedRaw, formattedSan, bodyRaw, bodySan, thrown)) return;
 
@@ -393,9 +395,11 @@ public class Alerts extends Handler {
             if (timeMs <= 0L) timeMs = System.currentTimeMillis();
 
             // Raw formatted (for backwards-compat ignore patterns)
-            String formattedRaw = formatLog4jEvent(event, bodyRaw, thrown, false);
+            String formattedRaw = formatAlert(lvl == null ? "WARN" : lvl.name(),
+                    loggerName, bodyRaw, timeMs, thrown, false);
             // Sanitized formatted (what we actually send)
-            String formattedSan = formatLog4jEvent(event, bodySan, thrown, true);
+            String formattedSan = formatAlert(lvl == null ? "WARN" : lvl.name(),
+                    loggerName, bodySan, timeMs, thrown, true);
 
             if (shouldIgnoreStrings(formattedRaw, formattedSan, bodyRaw, bodySan, thrown)) return;
 
@@ -413,16 +417,30 @@ public class Alerts extends Handler {
         }
     }
 
-    private String formatLog4jEvent(LogEvent event, String body, Throwable t, boolean sanitizeException) {
+    /**
+     * Common formatter used for both JUL and Log4j events.
+     *
+     * @param levelName     textual level (e.g., "WARN" or "ERROR")
+     * @param loggerName    logger name or "root"
+     * @param body          message body (raw or sanitized depending on sanitize flag)
+     * @param timeMs        epoch millis
+     * @param t             optional throwable
+     * @param sanitizeException whether to sanitize the exception message and trace
+     * @return formatted alert string
+     */
+    private String formatAlert(String levelName, String loggerName, String body, long timeMs, Throwable t, boolean sanitizeException) {
         StringBuilder sb = new StringBuilder();
         sb.append("⚠️ ").append(pingType).append(" [")
-                .append(event.getLevel() != null ? event.getLevel().name() : "WARN").append("]");
-        sb.append(" (").append(event.getLoggerName() != null ? event.getLoggerName() : "root").append(")");
+                .append(levelName == null ? "WARN" : levelName).append("]");
+        sb.append(" (").append(loggerName != null ? loggerName : "root").append(")");
         if (body != null && !body.isEmpty()) sb.append(" ").append(body);
 
-        long ms = 0L;
-        try { ms = event.getTimeMillis(); } catch (Throwable ignored) {}
-        sb.append("\n").append("Time: ").append(Instant.ofEpochMilli(ms));
+        try {
+            sb.append("\n").append("Time: ").append(Instant.ofEpochMilli(timeMs > 0L ? timeMs : System.currentTimeMillis()));
+        } catch (Throwable ignored) {
+            sb.append("\n").append("Time: ").append(Instant.now());
+        }
+
         if (t != null) {
             String tMsg = t.getMessage();
             String trace = getStackTraceString(t);
@@ -747,43 +765,7 @@ public class Alerts extends Handler {
         return s.substring(0, max) + "...(truncated)";
     }
 
-    // ---------------- Formatting ----------------
-
-    private String formatRecordRaw(LogRecord record, String bodyRaw, Throwable t) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("⚠️ ").append(pingType).append(" [").append(record.getLevel()).append("]");
-        sb.append(" (").append(record.getLoggerName() != null ? record.getLoggerName() : "root").append(")");
-        sb.append(" ").append(bodyRaw == null ? "" : bodyRaw);
-        sb.append("\n").append("Time: ").append(Instant.ofEpochMilli(record.getMillis()));
-
-        if (t != null) {
-            String tMsg = (t.getMessage() == null) ? "" : t.getMessage();
-            String trace = getStackTraceString(t);
-            sb.append("\nException: ").append(t.getClass().getName()).append(": ").append(tMsg);
-            if (!trace.isEmpty()) {
-                sb.append("\n```").append(trace).append("```");
-            }
-        }
-        return sb.toString();
-    }
-
-    private String formatRecordSanitized(LogRecord record, String bodySan, Throwable t) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("⚠️ ").append(pingType).append(" [").append(record.getLevel()).append("]");
-        sb.append(" (").append(record.getLoggerName() != null ? record.getLoggerName() : "root").append(")");
-        sb.append(" ").append(bodySan == null ? "" : bodySan);
-        sb.append("\n").append("Time: ").append(Instant.ofEpochMilli(record.getMillis()));
-
-        if (t != null) {
-            String tMsg = sanitizeForDiscord(t.getMessage());
-            String trace = sanitizeForDiscord(getStackTraceString(t));
-            sb.append("\nException: ").append(t.getClass().getName()).append(": ").append(tMsg);
-            if (!trace.isEmpty()) {
-                sb.append("\n```").append(trace).append("```");
-            }
-        }
-        return sb.toString();
-    }
+    // ---------------- Formatting helpers previously duplicated ----------------
 
     private String formatMessageBodyRaw(LogRecord record) {
         String msg = record.getMessage();
@@ -1058,7 +1040,7 @@ public class Alerts extends Handler {
         return out;
     }
 
-// ---------------- JDA shutdown hardening ----------------
+    // ---------------- JDA shutdown hardening ----------------
 
     private void safeShutdownJda(JDA instance) {
         if (instance == null) return;

@@ -8,6 +8,7 @@ import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -915,7 +916,7 @@ public class UptimeTracker {
         }
 
         @Override
-        public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
+        public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String @NonNull [] args) {
             if (args.length == 0) {
                 sendSummary(sender, "day");
                 sendSummary(sender, "week");

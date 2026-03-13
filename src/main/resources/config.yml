@@ -90,18 +90,54 @@ update-checker:
   notify-ops-on-login: true # Notify in player's chat at login for ops
   notify-ops-on-login-delay-ticks: 75 # Delay in tick after an op joins where they will be notified.
 
-login-rewards:
-  enabled: true # toggle for login rewards check
-  delay-ticks: 300 # delay in ticks after a player joins before the message is sent
-  placeholder: "%axrewards_collectable%" # The placeholder it will check if it's larger than 1
-  command: "/daily" # The command that will be activated when clicking, use <cmd> to put it in the message.
-  message-single: "<gold>You have <yellow><count></yellow> unclaimed reward! Use <green><cmd></green> to claim it." # message that is sent if placeholder returns 1
-  message-multiple: "<gold>You have <yellow><count></yellow> unclaimed rewards! Use <green><cmd></green> to claim them." # message that is sent if placeholder returns a number larger than 1
-  sound:
-    enabled: true # toggle for sound the message
-    name: "entity.experience_orb.pickup"
-    volume: 0.75
-    pitch: 1.0
+axrewards:
+  login-reminder:
+    enabled: true # toggle for login rewards check
+    delay-ticks: 300 # delay in ticks after a player joins before the message is sent
+    placeholder: "%axrewards_collectable%" # The placeholder it will check if it's larger than 1
+    command: "/daily" # The command that will be activated when clicking, use <cmd> to put it in the message.
+    # Text placeholders for messages <count> displays how many unclaimed the player has, <cmd> is command set above, <stk> is the streak from login-streaks.
+    # !! for <stk> to work login-streaks: enabled must be true !!
+    message-single: "<gold>You have <yellow><count></yellow> unclaimed reward! Use <green><cmd></green> to claim it. (Streak: <stk> days)" # message that is sent if placeholder returns 1
+    message-multiple: "<gold>You have <yellow><count></yellow> unclaimed rewards! Use <green><cmd></green> to claim them. (Streak: <stk> days)" # message that is sent if placeholder returns a number larger than 1
+    sound:
+      enabled: true # toggle for sound the message
+      name: "entity.experience_orb.pickup"
+      volume: 0.75
+      pitch: 1.0
+  login-streaks:
+    # !! use /kakchureward %player% <list> command in axrewards or outside to use !!
+    enabled: true # toggles login streaks
+    grace_per_week: 2
+    leaderboard_update_interval_minutes: 10
+    rewards:
+      daily: # example of <list> placeholders
+        streak: true
+        bonuses: # what commands will be executed if the player has the amount of streaks when /kakchureward is used
+          3:
+            commands: # executed server side %player% from axrewards placeholder
+              - "eco give %player% 5"
+          7:
+            commands:
+              - "eco give %player% 10"
+          14:
+            commands:
+              - "eco give %player% 15"
+          28:
+            commands:
+              - "eco give %player% 25"
+      weekly:
+        streak: false
+        bonuses:
+          14:
+            commands:
+              - "eco give %player% 50"
+          28:
+            commands:
+              - "eco give %player% 100"
+          84:
+            commands:
+              - "eco give %player% 150"
 
 help:
   # How many chat lines to show per page

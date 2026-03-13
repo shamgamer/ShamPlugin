@@ -6,8 +6,13 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import win.kakchuserver.streaks.LoginStreakManager;
+import win.kakchuserver.streaks.StreakCommands;
+import win.kakchuserver.streaks.RewardCommand;
 
 public class Manager extends JavaPlugin {
 
@@ -40,15 +45,12 @@ public class Manager extends JavaPlugin {
     public void onEnable() {
         instance = this;
 
-        // Ensure config exists before anything that reads it
         saveDefaultConfig();
 
-        // === Discord alerts (attach EARLY to avoid missing startup WARN/ERROR) ===
         enableDiscordAlertsEarly();
 
         getLogger().info("Kakchu Plugin enabled!");
 
-        // === Update checker ===
         if (getConfig().getBoolean("update-checker.enabled", true)) {
             long hours = Math.max(1, getConfig().getLong("update-checker.interval-hours", 12));
             long periodTicks = hours * 60L * 60L * 20L;
@@ -56,7 +58,6 @@ public class Manager extends JavaPlugin {
             Bukkit.getPluginManager().registerEvents(new UpdateLoginNotifier(this), this);
         }
 
-        // === Uptime tracker ===
         try {
             tracker = new UptimeTracker(this);
             tracker.start();
@@ -66,104 +67,74 @@ public class Manager extends JavaPlugin {
             tracker = null;
         }
 
-        // === Enable Login Notifications for players ===
-        // separate from update notifications
-        new PlayerNotifier(this).register();
-
-        // === Auto-register all commands from plugin.yml ===
-        @SuppressWarnings("deprecation") // Paper deprecates getDescription(), but it is still the simplest reliable way.
-        var commands = getDescription().getCommands();
-
-        if (!commands.isEmpty()) {
-            for (String cmdName : commands.keySet()) {
-                if ("uptime".equalsIgnoreCase(cmdName) && tracker != null) {
-                    registerCommand(cmdName, new UptimeTracker.UptimeCommand(tracker));
-                } else {
-                    registerCommand(cmdName, new Commands());
-                }
-            }
-        } else {
-            getLogger().info("No commands found in plugin.yml to register.");
+        /*
+         * Explicit command registration: register only the commands handled by Commands,
+         * register uptime separately if tracker is available, and leave other commands
+         * (streaks, kakchureward) to be set later after streak manager is initialized.
+         */
+        registerCommand("map", new Commands());
+        registerCommand("help", new Commands());
+        if (tracker != null) {
+            registerCommand("uptime", new UptimeTracker.UptimeCommand(tracker));
         }
 
-        // === Restarter scheduling ===
-        long startDelay = getConfig().getLong("restarter.start-delay-ticks", 432000L); // default 6 hours
-        long interval = getConfig().getLong("restarter.interval-ticks", 10L);          // default 10 ticks (0.5s)
-
-        if (startDelay < 0) {
-            getLogger().warning("restarter.start-delay-ticks is negative; using 0.");
-            startDelay = 0;
-        }
-        if (interval < 1) {
-            getLogger().warning("restarter.interval-ticks must be >= 1; using 10.");
-            interval = 10;
-        }
-        if (interval > 20) {
-            getLogger().warning("Restarter interval is greater than 20 ticks (" + interval + "). " +
-                    "The restarter checks hour:minute:second equality and may miss exact-second matches. " +
-                    "Consider using interval <= 20 for robust behaviour.");
-        }
+        long startDelay = getConfig().getLong("restarter.start-delay-ticks", 432000L);
+        long interval = getConfig().getLong("restarter.interval-ticks", 10L);
 
         try {
             Bukkit.getScheduler().runTaskTimer(this, new Restarter(this), startDelay, interval);
-            getLogger().info("⏰ Restarter scheduled with startDelay=" + startDelay + " ticks, interval=" + interval + " ticks.");
         } catch (Exception e) {
             getLogger().log(Level.SEVERE, "Failed to schedule Restarter task: " + e.getMessage(), e);
+        }
+
+        // use axrewards.login-streaks.* as the config path for enabling streaks
+        if (getConfig().getBoolean("axrewards.login-streaks.enabled", true)) {
+
+            LoginStreakManager streakManager = new LoginStreakManager(this);
+            streakManager.init();
+
+            StreakCommands streakCommands = new StreakCommands(this, streakManager);
+
+            Objects.requireNonNull(getCommand("streak"), "Command 'streak' missing from plugin.yml").setExecutor(streakCommands);
+            Objects.requireNonNull(getCommand("streaktop"), "Command 'streaktop' missing from plugin.yml").setExecutor(streakCommands);
+            Objects.requireNonNull(getCommand("higheststreaktop"), "Command 'higheststreaktop' missing from plugin.yml").setExecutor(streakCommands);
+            Objects.requireNonNull(getCommand("streakset"), "Command 'streakset' missing from plugin.yml").setExecutor(streakCommands);
+
+            RewardCommand rewardCommand = new RewardCommand(this, streakManager);
+            Objects.requireNonNull(getCommand("kakchureward"), "Command 'kakchureward' missing from plugin.yml").setExecutor(rewardCommand);
+            Objects.requireNonNull(getCommand("kakchureward"), "Command 'kakchureward' missing from plugin.yml").setTabCompleter(rewardCommand);
+
+            new PlayerNotifier(this, streakManager).register();
         }
     }
 
     private void enableDiscordAlertsEarly() {
-        // Support both current (discord alerts.*) and legacy configs (discord.* / alerts.*).
+
         final var cfg = getConfig();
 
-        String tokenNew = trimToEmpty(cfg.getString("discord alerts.token", ""));
-        String channelNew = trimToEmpty(cfg.getString("discord alerts.channel", ""));
-        String pingNew = trimToEmpty(cfg.getString("discord alerts.ping", ""));
+        String token = trimToEmpty(cfg.getString("discord alerts.token", ""));
+        String channelId = trimToEmpty(cfg.getString("discord alerts.channel", ""));
+        String pingType = trimToEmpty(cfg.getString("discord alerts.ping", ""));
 
-        // Legacy (<= 2.7.0RC8 and earlier)
-        String tokenLegacy = trimToEmpty(cfg.getString("discord.token", ""));
-        String channelLegacy = trimToEmpty(cfg.getString("discord.channel", ""));
-        String pingLegacy = trimToEmpty(cfg.getString("discord.ping", ""));
+        if (pingType.isEmpty())
+            pingType = "@everyone";
 
-        String token = !tokenNew.isEmpty() ? tokenNew : tokenLegacy;
-        String channelId = !channelNew.isEmpty() ? channelNew : channelLegacy;
-
-        String pingType = !pingNew.isEmpty() ? pingNew : pingLegacy;
-        pingType = pingType.trim();
-        if (pingType.isEmpty()) pingType = "@everyone";
-
-        // Ignore list (new key first, then legacy fallbacks)
-        List<String> ignoreNew = cfg.getStringList("discord alerts.ignore");
-        List<String> ignoreLegacyDiscord = cfg.getStringList("discord.ignore");
-        List<String> ignoreLegacyAlerts = cfg.getStringList("alerts.ignore");
-
-        List<String> ignore = ignoreNew;
-        if (ignore.isEmpty()) ignore = ignoreLegacyDiscord;
-        if (ignore.isEmpty()) ignore = ignoreLegacyAlerts;
-        ignore = new ArrayList<>(ignore);
-
-        boolean usedLegacyValues =
-                (tokenNew.isEmpty() && !tokenLegacy.isEmpty()) ||
-                        (channelNew.isEmpty() && !channelLegacy.isEmpty()) ||
-                        (pingNew.isEmpty() && !pingLegacy.isEmpty()) ||
-                        (ignoreNew.isEmpty() && (!ignoreLegacyDiscord.isEmpty() || !ignoreLegacyAlerts.isEmpty()));
+        List<String> ignore = new ArrayList<>(cfg.getStringList("discord alerts.ignore"));
 
         if (token.isBlank() || channelId.isBlank()) {
             getLogger().warning("⚠️ Discord alert token/channel not set in config.yml.");
             return;
         }
-        if (usedLegacyValues) {
-            getLogger().warning("⚠️ Using legacy config keys for Discord alerts (discord.* / alerts.*). Please migrate to 'discord alerts:' in config.yml.");
-        }
 
         try {
-            // Constructor is non-blocking; it starts JDA init on its own thread.
+
             alertsHandler = new Alerts(token, channelId, pingType, ignore);
 
             Logger rootLogger = Logger.getLogger("");
             rootLogger.addHandler(alertsHandler);
 
             getLogger().info("✅ Discord alerts enabled.");
+
         } catch (Exception e) {
             getLogger().log(Level.SEVERE, "❌ Failed to enable Discord alerts: " + e.getMessage(), e);
         }
@@ -175,10 +146,10 @@ public class Manager extends JavaPlugin {
 
     @Override
     public void onDisable() {
+
         if (tracker != null) {
             try {
                 tracker.stop();
-                getLogger().info("✅ UptimeTracker stopped and saved.");
             } catch (Exception e) {
                 getLogger().log(Level.WARNING, "Failed to stop UptimeTracker cleanly: " + e.getMessage(), e);
             }
@@ -187,22 +158,20 @@ public class Manager extends JavaPlugin {
         if (alertsHandler != null) {
             Logger rootLogger = Logger.getLogger("");
             rootLogger.removeHandler(alertsHandler);
-            try {
-                alertsHandler.close();
-            } catch (Exception ignored) {
-            }
+            alertsHandler.close();
         }
 
         getLogger().info("Kakchu Plugin disabled!");
     }
 
     private void registerCommand(String name, CommandExecutor executor) {
+
         var cmd = getCommand(name);
-        if (cmd != null) {
+
+        if (cmd != null)
             cmd.setExecutor(executor);
-        } else {
+        else
             getLogger().warning("Command '" + name + "' not found in plugin.yml");
-        }
     }
 
     public static Manager getInstance() {

@@ -16,12 +16,14 @@ commands:
     aliases: [servermap, worldmap]
     permission: kakchuplugin.map
     permission-message: You do not have permission to use this command.
+
   help:
     description: Shows commands players can use
     usage: /help
     aliases: [commands, assistance]
     permission: kakchuplugin.help
     permission-message: You do not have permission to use this command.
+
   uptime:
     description: Shows server uptime statistics (day/week/month/year/all-time)
     usage: /uptime
@@ -29,17 +31,60 @@ commands:
     permission: kakchuplugin.uptime
     permission-message: You do not have permission to use this command.
 
+  streak:
+    description: Shows your login streak
+    usage: /streak
+    permission: kakchuplugin.streak
+    permission-message: You do not have permission to use this command.
+
+  streaktop:
+    description: Shows login streak leaderboard
+    usage: /streaktop
+    permission: kakchuplugin.streak
+    permission-message: You do not have permission to use this command.
+
+  higheststreaktop:
+    description: Shows highest streak leaderboard
+    usage: /higheststreaktop
+    permission: kakchuplugin.streak
+    permission-message: You do not have permission to use this command.
+
+  streakset:
+    description: Set a player's streak
+    usage: /streakset <player> <value>
+    permission: kakchuplugin.admin
+    permission-message: You do not have permission to use this command.
+
+  kakchureward:
+    description: Trigger login reward processing (admin)
+    usage: /kakchureward <player> <type>
+    permission: kakchuplugin.admin
+    permission-message: You do not have permission to use this command.
+
 permissions:
+
   kakchuplugin.map:
     description: Allows usage of /map command
     default: true
+
   kakchuplugin.help:
     description: Allows usage of /help command
+    default: true
+
   kakchuplugin.uptime:
     description: Allows usage of /uptime command
     default: true
+
   kakchuplugin.loginrewards:
     description: Allows login reward reminder message
     default: true
+
+  kakchuplugin.streak:
+    description: Allows usage of /streak and /streaktop and /higheststreaktop
+    default: true
+
+  kakchuplugin.admin:
+    description: Admin commands
+    default: op
 
 build-time: ${build.time}

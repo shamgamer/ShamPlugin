@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.jspecify.annotations.NonNull;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -49,7 +50,7 @@ public final class UpdateChecker implements Runnable {
         String mcVersion = Bukkit.getMinecraftVersion(); // e.g. "1.21.11"
         String url = buildModrinthVersionsUrl(projectId, loaders, mcVersion);
 
-        String current = plugin.getDescription().getVersion();
+        String current = plugin.getPluginMeta().getVersion();
 
         try {
             HttpRequest req = HttpRequest.newBuilder()
@@ -109,7 +110,7 @@ public final class UpdateChecker implements Runnable {
 
             // Prefer a direct file download URL; fall back to plugin.yml website if missing.
             String downloadUrl = extractFirstFileUrl(latest);
-            String projectPage = plugin.getDescription().getWebsite(); // from plugin.yml
+            String projectPage = plugin.getPluginMeta().getWebsite(); // from plugin.yml
             if ((downloadUrl == null || downloadUrl.isBlank()) && projectPage != null && !projectPage.isBlank()) {
                 downloadUrl = projectPage.trim();
             }
@@ -259,7 +260,7 @@ public final class UpdateChecker implements Runnable {
         }
 
         @Override
-        public int compareTo(Version o) {
+        public int compareTo(@NonNull Version o) {
             for (int i = 0; i < 4; i++) {
                 int diff = Integer.compare(this.core[i], o.core[i]);
                 if (diff != 0) return diff;
@@ -294,7 +295,7 @@ public final class UpdateChecker implements Runnable {
             String numPart = null;
 
             // Split "beta.1" or "beta-1"
-            String[] parts = lower.split("[\\.-]", 2);
+            String[] parts = lower.split("[.-]", 2);
             label = parts[0];
 
             if (parts.length == 2) {
@@ -319,9 +320,7 @@ public final class UpdateChecker implements Runnable {
             if (numPart != null && !numPart.isBlank()) {
                 try {
                     n = Integer.parseInt(numPart);
-                } catch (NumberFormatException ignored) {
-                    n = 0;
-                }
+                } catch (NumberFormatException ignored) {}
             }
 
             return new PreRelease(rank, n, lower);

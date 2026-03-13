@@ -13,18 +13,21 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+import win.kakchuserver.streaks.LoginStreakManager;
 
 public final class PlayerNotifier {
 
     private final JavaPlugin plugin;
+    private final LoginStreakManager streakManager;
 
-    public PlayerNotifier(JavaPlugin plugin) {
+    public PlayerNotifier(JavaPlugin plugin, LoginStreakManager manager) {
         this.plugin = plugin;
+        this.streakManager = manager;
     }
 
     public void register() {
         Bukkit.getPluginManager().registerEvents(
-                new LoginRewardReminder(plugin),
+                new LoginRewardReminder(plugin, streakManager),
                 plugin
         );
     }
@@ -37,15 +40,17 @@ class LoginRewardReminder implements Listener {
     private static final String PERMISSION = "kakchuplugin.loginrewards";
 
     private final JavaPlugin plugin;
+    private final LoginStreakManager streakManager;
     private final MiniMessage mini = MiniMessage.miniMessage();
 
-    LoginRewardReminder(JavaPlugin plugin) {
+    LoginRewardReminder(JavaPlugin plugin, LoginStreakManager manager) {
         this.plugin = plugin;
+        this.streakManager = manager;
     }
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
-        if (!plugin.getConfig().getBoolean("login-rewards.enabled", true)) return;
+        if (!plugin.getConfig().getBoolean("axrewards.login-reminder.enabled", true)) return;
 
         Player player = event.getPlayer();
         if (!player.hasPermission(PERMISSION)) return;
@@ -55,13 +60,13 @@ class LoginRewardReminder implements Listener {
             return;
         }
 
-        long delay = plugin.getConfig().getLong("login-rewards.delay-ticks", 2L);
+        long delay = plugin.getConfig().getLong("axrewards.login-reminder.delay-ticks", 2L);
         String placeholder = plugin.getConfig().getString(
-                "login-rewards.placeholder",
+                "axrewards.login-reminder.placeholder",
                 "%axrewards_collectable%"
         );
         String command = plugin.getConfig().getString(
-                "login-rewards.command",
+                "axrewards.login-reminder.command",
                 "/daily"
         );
 
@@ -79,14 +84,15 @@ class LoginRewardReminder implements Listener {
             if (count <= 0) return;
 
             String template = count == 1
-                    ? plugin.getConfig().getString("login-rewards.message-single")
-                    : plugin.getConfig().getString("login-rewards.message-multiple");
+                    ? plugin.getConfig().getString("axrewards.login-reminder.message-single")
+                    : plugin.getConfig().getString("axrewards.login-reminder.message-multiple");
 
             if (template == null || template.isEmpty()) return;
 
             String rendered = template
                     .replace("<count>", String.valueOf(count))
-                    .replace("<cmd>", command);
+                    .replace("<cmd>", command)
+                    .replace("<stk>", String.valueOf(safeGetStreak(player)));
 
             Component message = mini.deserialize(rendered)
                     .replaceText(builder ->
@@ -104,11 +110,19 @@ class LoginRewardReminder implements Listener {
         }, delay);
     }
 
+    private int safeGetStreak(Player player) {
+        try {
+            return streakManager.getCurrentStreak(player);
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
     private void playSound(Player player) {
-        if (!plugin.getConfig().getBoolean("login-rewards.sound.enabled", false)) return;
+        if (!plugin.getConfig().getBoolean("axrewards.login-reminder.sound.enabled", false)) return;
 
         String soundName = plugin.getConfig().getString(
-                "login-rewards.sound.name",
+                "axrewards.login-reminder.sound.name",
                 "entity.experience_orb.pickup"
         ).toLowerCase();
 
@@ -124,8 +138,8 @@ class LoginRewardReminder implements Listener {
         Sound sound = Registry.SOUNDS.get(key);
         if (sound == null) return;
 
-        float volume = (float) plugin.getConfig().getDouble("login-rewards.sound.volume", 1.0);
-        float pitch = (float) plugin.getConfig().getDouble("login-rewards.sound.pitch", 1.0);
+        float volume = (float) plugin.getConfig().getDouble("axrewards.login-reminder.sound.volume", 1.0);
+        float pitch = (float) plugin.getConfig().getDouble("axrewards.login-reminder.sound.pitch", 1.0);
 
         player.playSound(player.getLocation(), sound, volume, pitch);
     }
