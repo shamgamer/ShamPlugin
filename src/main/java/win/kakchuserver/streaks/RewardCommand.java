@@ -85,7 +85,8 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
 
         if (selectedThreshold == null) {
             sender.sendMessage("§7No reward configured for streak " + currentStreak + " (" + typeInput + ").");
-            return true;
+
+            return shouldIncrement(sender, targetName, offline, ps, typePath);
         }
 
         String commandsPath = typePath + ".bonuses." + selectedThreshold + ".commands";
@@ -113,6 +114,10 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
 
         sender.sendMessage("§aExecuted configured reward commands for " + (offline.getName() != null ? offline.getName() : targetName) + " (threshold " + selectedThreshold + ", " + typeInput + ").");
 
+        return shouldIncrement(sender, targetName, offline, ps, typePath);
+    }
+
+    private boolean shouldIncrement(@NonNull CommandSender sender, String targetName, OfflinePlayer offline, PlayerStreak ps, String typePath) {
         boolean shouldIncrement = plugin.getConfig().getBoolean(typePath + ".streak", false);
         if (shouldIncrement) {
             ps.current = ps.current + 1;
