@@ -6,7 +6,7 @@
 
 ## Curseforge Page:
 
-### https://www.curseforge.com/minecraft/bukkit-plugins/kakchu-plugin
+### https://www.curseforge.com/minecraft/bukkit-plugins/sham-plugin
 
 ## Discord
 
