@@ -4,6 +4,10 @@
 
 ### https://modrinth.com/project/w6F3AvdX
 
+## Curseforge Page:
+
+### https://www.curseforge.com/minecraft/bukkit-plugins/kakchu-plugin
+
 ## Discord
 
 ### https://discord.gg/cN28UkhzSa
