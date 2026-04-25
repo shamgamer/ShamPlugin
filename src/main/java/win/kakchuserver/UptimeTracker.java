@@ -41,7 +41,7 @@ import java.util.logging.Level;
  * - Recovery from tmp / backups if main file is missing/empty/invalid
  * - Persist heartbeat (runningSince) together with interval end updates
  * - Coalesced async saves (latest snapshot wins) to prevent backlog
- *
+
  * Config keys:
  * uptime:
  *   flush-interval-seconds: 1
