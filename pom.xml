@@ -6,7 +6,7 @@
 
     <groupId>win.kakchuserver</groupId>
     <artifactId>kakchuplugin</artifactId>
-    <version>3.0.1</version>
+    <version>26.1.0</version>
     <packaging>jar</packaging>
 
     <name>kakchuplugin</name>

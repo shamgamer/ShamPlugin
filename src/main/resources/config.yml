@@ -108,8 +108,12 @@ axrewards:
   login-streaks:
     # !! use /kakchureward %player% <list> command in axrewards or outside to use !!
     enabled: true # toggles login streaks
-    grace_per_week: 2
-    leaderboard_update_interval_minutes: 10
+    pause: false # prevents streaks from being lost when true, useful after long server maintenances
+    grace_per_week: 2 # number of graces players get, graces are days a player can skip and not lose their streak
+    grace_reset_day: 1 # day of week at which the graces reset, 0 Sunday 6 Saturday
+    grace_reset_time: 0:30 # time of day (UTC) at which the graces reset
+    leaderboard_update_interval_minutes: 10 # how often the /streaktop and /higheststreaktop update their info
+    leaderboard_display_length: 10 # value from 1 to 100
     rewards:
       daily: # example of <list> placeholders
         streak: true

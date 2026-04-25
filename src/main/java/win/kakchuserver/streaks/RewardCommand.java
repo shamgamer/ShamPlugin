@@ -7,6 +7,7 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.StringUtil;
 import org.jspecify.annotations.NonNull;
@@ -15,7 +16,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -38,7 +38,7 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(@NonNull CommandSender sender, @NonNull Command cmd, @NonNull String label, String @NonNull [] args) {
 
-        if (sender instanceof org.bukkit.entity.Player p) {
+        if (sender instanceof Player p) {
             if (!p.isOp() && !p.hasPermission("kakchuplugin.admin")) {
                 sender.sendMessage("§cYou do not have permission.");
                 return true;
@@ -59,7 +59,9 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        PlayerStreak ps = manager.get(offline.getUniqueId(), offline.getName() != null ? offline.getName() : targetName);
+        String resolvedName = offline.getName() != null ? offline.getName() : targetName;
+
+        PlayerStreak ps = manager.get(offline.getUniqueId(), resolvedName);
         int currentStreak = (ps == null) ? 0 : ps.current;
 
         String typePath = resolveTypePath(typeInput);
@@ -74,6 +76,8 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
+        boolean shouldIncrement = plugin.getConfig().getBoolean(typePath + ".streak", false);
+
         List<Integer> keys = bonusesSection.getKeys(false).stream().map(k -> {
             try { return Integer.parseInt(k); } catch (NumberFormatException ex) { return null; }
         }).filter(Objects::nonNull).sorted().collect(Collectors.toList());
@@ -86,7 +90,16 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
         if (selectedThreshold == null) {
             sender.sendMessage("§7No reward configured for streak " + currentStreak + " (" + typeInput + ").");
 
-            return shouldIncrement(sender, targetName, offline, ps, typePath);
+            if (shouldIncrement) {
+                boolean updated = manager.handleClaim(offline.getUniqueId(), resolvedName, true);
+                if (updated) {
+                    sender.sendMessage("§aIncremented streak for " + resolvedName + " to " + manager.get(offline.getUniqueId(), resolvedName).current);
+                } else {
+                    sender.sendMessage("§cCould not update the streak for " + resolvedName + ".");
+                }
+            }
+
+            return true;
         }
 
         String commandsPath = typePath + ".bonuses." + selectedThreshold + ".commands";
@@ -108,22 +121,19 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
 
         for (String c : configuredCommands) {
             if (c == null || c.isBlank()) continue;
-            String replaced = c.replace("%player%", offline.getName() != null ? offline.getName() : targetName);
+            String replaced = c.replace("%player%", resolvedName);
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), replaced);
         }
 
-        sender.sendMessage("§aExecuted configured reward commands for " + (offline.getName() != null ? offline.getName() : targetName) + " (threshold " + selectedThreshold + ", " + typeInput + ").");
+        sender.sendMessage("§aExecuted configured reward commands for " + resolvedName + " (threshold " + selectedThreshold + ", " + typeInput + ").");
 
-        return shouldIncrement(sender, targetName, offline, ps, typePath);
-    }
-
-    private boolean shouldIncrement(@NonNull CommandSender sender, String targetName, OfflinePlayer offline, PlayerStreak ps, String typePath) {
-        boolean shouldIncrement = plugin.getConfig().getBoolean(typePath + ".streak", false);
         if (shouldIncrement) {
-            ps.current = ps.current + 1;
-            if (ps.current > ps.highest) ps.highest = ps.current;
-            manager.save(ps);
-            sender.sendMessage("§aIncremented streak for " + (offline.getName() != null ? offline.getName() : targetName) + " to " + ps.current);
+            boolean updated = manager.handleClaim(offline.getUniqueId(), resolvedName, true);
+            if (updated) {
+                sender.sendMessage("§aIncremented streak for " + resolvedName + " to " + manager.get(offline.getUniqueId(), resolvedName).current);
+            } else {
+                sender.sendMessage("§cCould not update the streak for " + resolvedName + ".");
+            }
         }
 
         return true;
@@ -135,7 +145,7 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 1) {
             List<String> names = Bukkit.getOnlinePlayers().stream()
-                    .map(p -> p.getName())
+                    .map(Player::getName)
                     .collect(Collectors.toList());
             return StringUtil.copyPartialMatches(args[0], names, new ArrayList<>());
         }
