@@ -89,33 +89,36 @@ class LoginRewardReminder implements Listener {
 
             if (template == null || template.isEmpty()) return;
 
-            String rendered = template
-                    .replace("<count>", String.valueOf(count))
-                    .replace("<cmd>", command)
-                    .replace("<stk>", String.valueOf(safeGetStreak(player)));
+            streakManager.getCurrentStreakAsync(player.getUniqueId(), player.getName())
+                    .whenComplete((streak, throwable) -> Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (!player.isOnline()) {
+                            return;
+                        }
 
-            Component message = mini.deserialize(rendered)
-                    .replaceText(builder ->
-                            builder.matchLiteral(command)
-                                    .replacement(
-                                            Component.text(command)
-                                                    .clickEvent(ClickEvent.runCommand(command))
-                                    )
-                    );
+                        int currentStreak = throwable == null ? streak : 0;
+                        if (throwable != null) {
+                            plugin.getLogger().warning("Failed to load login streak for " + player.getName() + ": " + throwable.getMessage());
+                        }
 
-            player.sendMessage(message);
+                        String rendered = template
+                                .replace("<count>", String.valueOf(count))
+                                .replace("<cmd>", command)
+                                .replace("<stk>", String.valueOf(currentStreak));
 
-            playSound(player);
+                        Component message = mini.deserialize(rendered)
+                                .replaceText(builder ->
+                                        builder.matchLiteral(command)
+                                                .replacement(
+                                                        Component.text(command)
+                                                                .clickEvent(ClickEvent.runCommand(command))
+                                                )
+                                );
+
+                        player.sendMessage(message);
+                        playSound(player);
+                    }));
 
         }, delay);
-    }
-
-    private int safeGetStreak(Player player) {
-        try {
-            return streakManager.getCurrentStreak(player);
-        } catch (Exception ignored) {
-            return 0;
-        }
     }
 
     private void playSound(Player player) {

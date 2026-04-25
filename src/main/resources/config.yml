@@ -20,6 +20,7 @@ uptime:
   retention-days: -1 # the amount of days it keeps uptime logs, -1 is infinite.
   merge-gap-ms: 1000
 
+# !!DEPRECATED!! restarter will no longer receive updates and will be removed in version 26.3.0
 restarter: # All values are in server ticks, minecraft usually runs at 20 ticks per second.
   start-delay-ticks: 432000   # default 6 hours (432000 ticks)
   interval-ticks: 10          # default 0.5 seconds (10 ticks)
@@ -83,7 +84,7 @@ update-checker:
   enabled: true
   project-id: "w6F3AvdX" # the modrinth id for update checks, default is "w6F3AvdX"
   loaders: ["purpur", "paper"]
-  include-prerelease: true # false will ignore beta and alpha versions
+  include-prerelease: false # false will ignore beta and alpha versions
   interval-hours: 12
   notify-console: true # Notify in console after server start + at interval hours
   notify-ops: true # Notify in player's chat at interval hours
@@ -109,9 +110,11 @@ axrewards:
     # !! use /kakchureward %player% <list> command in axrewards or outside to use !!
     enabled: true # toggles login streaks
     pause: false # prevents streaks from being lost when true, useful after long server maintenances
-    grace_per_week: 2 # number of graces players get, graces are days a player can skip and not lose their streak
-    grace_reset_day: 1 # day of week at which the graces reset, 0 Sunday 6 Saturday
-    grace_reset_time: 0:30 # time of day (UTC) at which the graces reset
+    claim_period: "24h" # how much time must pass before grace is lose (example 24h: 24h for daily then another 24h to claim before grace used)
+    grace_per_cycle: 2 # number of missed claim windows players can skip without losing their streak
+    grace_reset_period: "7d" # how often grace usage resets, counted from the day/time anchor below
+    grace_reset_day: 1 # anchor day for the grace reset cycle, 0 Sunday 6 Saturday
+    grace_reset_time: 0:30 # anchor time of day (UTC) for the grace reset cycle
     leaderboard_update_interval_minutes: 10 # how often the /streaktop and /higheststreaktop update their info
     leaderboard_display_length: 10 # value from 1 to 100
     rewards:

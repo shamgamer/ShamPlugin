@@ -38,4 +38,16 @@ public class PlayerStreak {
 
     }
 
+    public PlayerStreak copy() {
+        return new PlayerStreak(
+                uuid,
+                username,
+                current,
+                highest,
+                lastClaim,
+                graceUsed,
+                graceWeek
+        );
+    }
+
 }

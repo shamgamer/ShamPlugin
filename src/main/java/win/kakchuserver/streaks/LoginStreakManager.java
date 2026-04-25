@@ -1,6 +1,5 @@
 package win.kakchuserver.streaks;
 
-import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.sql.Connection;
@@ -18,89 +17,292 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class LoginStreakManager {
 
     private static final ZoneOffset GRACE_ZONE = ZoneOffset.UTC;
-    private static final long WEEK_SECONDS = Duration.ofDays(7).toSeconds();
-    private static final long DAY_SECONDS = Duration.ofDays(1).toSeconds();
     private static final long MILLIS_THRESHOLD = 1_000_000_000_000L;
     private static final DateTimeFormatter GRACE_TIME_FORMAT = DateTimeFormatter.ofPattern("H:mm");
+    private static final Pattern DURATION_TOKEN = Pattern.compile("(\\d+)\\s*([smhdw])", Pattern.CASE_INSENSITIVE);
 
     private final JavaPlugin plugin;
-    private Connection connection;
-
+    private final ExecutorService dbExecutor;
     private final Map<UUID, PlayerStreak> cache = new HashMap<>();
 
-    private List<PlayerStreak> cachedTopCurrent = new ArrayList<>();
-    private List<PlayerStreak> cachedTopHighest = new ArrayList<>();
+    private Connection connection;
+    private List<PlayerStreak> cachedTopCurrent = List.of();
+    private List<PlayerStreak> cachedTopHighest = List.of();
+    private long lastLeaderboardUpdate = 0L;
+    private volatile boolean closed = false;
 
-    private long lastLeaderboardUpdate = 0;
+    public record StreakStatus(
+            int current,
+            int highest,
+            int availableGraces,
+            int maxGraces,
+            Duration timeUntilReset
+    ) {
+    }
+
+    public record ClaimResult(
+            int rewardStreak,
+            int currentStreak,
+            int highestStreak,
+            boolean streakIncremented
+    ) {
+    }
+
+    private record Projection(
+            int current,
+            int highest,
+            int graceUsed,
+            int graceCycle,
+            int availableGraces,
+            boolean firstClaim,
+            boolean expired,
+            boolean pauseProtected,
+            Duration timeUntilReset
+    ) {
+    }
 
     public LoginStreakManager(JavaPlugin plugin) {
         this.plugin = plugin;
+        this.dbExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread thread = new Thread(r, "Kakchu-StreakDb");
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
-    public synchronized void init() {
-
+    public boolean init() {
         try {
+            return runOnDbThread(() -> {
+                connection = DriverManager.getConnection("jdbc:sqlite:" + plugin.getDataFolder() + "/streaks.db");
 
-            connection = DriverManager.getConnection(
-                    "jdbc:sqlite:" + plugin.getDataFolder() + "/streaks.db"
-            );
+                try (Statement stmt = connection.createStatement()) {
+                    stmt.executeUpdate("""
+                        CREATE TABLE IF NOT EXISTS streaks (
+                        uuid TEXT PRIMARY KEY,
+                        username TEXT,
+                        current_streak INTEGER,
+                        highest_streak INTEGER,
+                        last_claim BIGINT,
+                        grace_used INTEGER,
+                        grace_week INTEGER
+                        )
+                    """);
+                }
 
-            try (Statement stmt = connection.createStatement()) {
-                stmt.executeUpdate("""
-                    CREATE TABLE IF NOT EXISTS streaks (
-                    uuid TEXT PRIMARY KEY,
-                    username TEXT,
-                    current_streak INTEGER,
-                    highest_streak INTEGER,
-                    last_claim BIGINT,
-                    grace_used INTEGER,
-                    grace_week INTEGER
-                    )
-                """);
-            }
+                return true;
+            }).join();
+        } catch (CompletionException ex) {
+            plugin.getLogger().severe("Failed to initialize streak database: " + ex.getCause().getMessage());
+            plugin.getLogger().throwing(getClass().getName(), "init", ex.getCause());
+            return false;
+        }
+    }
 
-        } catch (Exception e) {
-            e.printStackTrace();
+    public void shutdown() {
+        if (closed) {
+            return;
         }
 
+        try {
+            CompletableFuture.runAsync(this::closeConnectionQuietly, dbExecutor).join();
+        } catch (CompletionException ex) {
+            Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+            plugin.getLogger().warning("Failed to close streak database cleanly: " + cause.getMessage());
+        } finally {
+            closed = true;
+            dbExecutor.shutdown();
+            try {
+                if (!dbExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                    dbExecutor.shutdownNow();
+                }
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                dbExecutor.shutdownNow();
+            }
+        }
     }
 
-    public synchronized PlayerStreak get(UUID uuid, String username) {
+    public CompletableFuture<StreakStatus> getStatusAsync(UUID uuid, String username) {
+        return runOnDbThread(() -> {
+            PlayerStreak streak = getOrLoad(uuid, username);
+            Projection projection = project(streak, currentEpochSecond());
 
-        if (cache.containsKey(uuid)) {
+            return new StreakStatus(
+                    projection.current(),
+                    projection.highest(),
+                    projection.availableGraces(),
+                    getMaxGracePerCycle(),
+                    projection.timeUntilReset()
+            );
+        });
+    }
 
-            PlayerStreak cached = cache.get(uuid);
+    public CompletableFuture<Integer> getCurrentStreakAsync(UUID uuid, String username) {
+        return getStatusAsync(uuid, username).thenApply(StreakStatus::current);
+    }
 
-            if (!Objects.equals(cached.username, username)) {
-                cached.username = username;
-                save(cached);
+    public CompletableFuture<ClaimResult> processClaimAsync(UUID uuid, String username, boolean countsForStreak) {
+        return runOnDbThread(() -> processClaim(uuid, username, countsForStreak));
+    }
+
+    public CompletableFuture<List<PlayerStreak>> getTopCurrentAsync(int limit) {
+        return runOnDbThread(() -> {
+            updateLeaderboardsIfNeeded();
+            return copyLeaderboard(cachedTopCurrent, limit);
+        });
+    }
+
+    public CompletableFuture<List<PlayerStreak>> getTopHighestAsync(int limit) {
+        return runOnDbThread(() -> {
+            updateLeaderboardsIfNeeded();
+            return copyLeaderboard(cachedTopHighest, limit);
+        });
+    }
+
+    public CompletableFuture<PlayerStreak> setStreakAsync(UUID uuid, String username, int value) {
+        return runOnDbThread(() -> {
+            PlayerStreak streak = getOrLoad(uuid, username);
+            long now = currentEpochSecond();
+            int currentGraceCycle = getCurrentGraceCycleKey(now);
+
+            streak.username = username;
+            streak.current = value;
+            if (value > streak.highest) {
+                streak.highest = value;
             }
 
+            if (value <= 0) {
+                streak.current = 0;
+                streak.lastClaim = 0;
+                streak.graceUsed = 0;
+                streak.graceWeek = currentGraceCycle;
+            } else {
+                streak.lastClaim = now;
+                streak.graceUsed = 0;
+                streak.graceWeek = currentGraceCycle;
+            }
+
+            saveInternal(streak);
+            return streak.copy();
+        });
+    }
+
+    public int getMaxGracePerCycle() {
+        String axPath = "axrewards.login-streaks.grace_per_cycle";
+        String oldAxPath = "axrewards.login-streaks.grace_per_week";
+        String legacyPath = "login_streaks.grace_per_cycle";
+        String oldLegacyPath = "login_streaks.grace_per_week";
+
+        if (plugin.getConfig().contains(axPath)) {
+            return Math.max(0, plugin.getConfig().getInt(axPath));
+        }
+        if (plugin.getConfig().contains(oldAxPath)) {
+            return Math.max(0, plugin.getConfig().getInt(oldAxPath));
+        }
+        if (plugin.getConfig().contains(legacyPath)) {
+            return Math.max(0, plugin.getConfig().getInt(legacyPath));
+        }
+        return Math.max(0, plugin.getConfig().getInt(oldLegacyPath, 2));
+    }
+
+    public Duration getTimeUntilGraceReset() {
+        long now = currentEpochSecond();
+        long cycleSeconds = getGraceCycleSeconds();
+        long anchorSeconds = getGraceResetAnchorEpochSecond();
+        long cycleIndex = Math.floorDiv(now - anchorSeconds, cycleSeconds);
+        long nextReset = anchorSeconds + ((cycleIndex + 1L) * cycleSeconds);
+        return Duration.ofSeconds(Math.max(0L, nextReset - now));
+    }
+
+    private ClaimResult processClaim(UUID uuid, String username, boolean countsForStreak) throws Exception {
+        PlayerStreak streak = getOrLoad(uuid, username);
+        long now = currentEpochSecond();
+        Projection projection = project(streak, now);
+        int rewardStreak = projection.current();
+
+        if (!countsForStreak) {
+            return new ClaimResult(rewardStreak, projection.current(), projection.highest(), false);
+        }
+
+        streak.username = username;
+        streak.graceWeek = projection.graceCycle();
+
+        if (projection.firstClaim()) {
+            streak.current = 1;
+            streak.highest = Math.max(streak.highest, 1);
+            streak.lastClaim = now;
+            streak.graceUsed = 0;
+            saveInternal(streak);
+            return new ClaimResult(0, streak.current, streak.highest, true);
+        }
+
+        if (projection.expired()) {
+            streak.current = 1;
+            streak.highest = Math.max(streak.highest, 1);
+            streak.lastClaim = now;
+            streak.graceUsed = 0;
+            saveInternal(streak);
+            return new ClaimResult(0, streak.current, streak.highest, true);
+        }
+
+        if (projection.pauseProtected()) {
+            streak.current = projection.current();
+            streak.highest = Math.max(streak.highest, projection.highest());
+            streak.lastClaim = now;
+            streak.graceUsed = projection.graceUsed();
+            saveInternal(streak);
+            return new ClaimResult(rewardStreak, streak.current, streak.highest, false);
+        }
+
+        streak.current = projection.current() + 1;
+        streak.highest = Math.max(streak.highest, streak.current);
+        streak.lastClaim = now;
+        streak.graceUsed = projection.graceUsed();
+        saveInternal(streak);
+
+        return new ClaimResult(rewardStreak, streak.current, streak.highest, true);
+    }
+
+    private PlayerStreak getOrLoad(UUID uuid, String username) throws Exception {
+        PlayerStreak cached = cache.get(uuid);
+        if (cached != null) {
+            if (!Objects.equals(cached.username, username)) {
+                cached.username = username;
+                saveInternal(cached);
+            }
             return cached;
         }
 
-        try (PreparedStatement ps = connection.prepareStatement(
-                "SELECT * FROM streaks WHERE uuid=?"
-        )) {
+        ensureConnection();
 
+        try (PreparedStatement ps = connection.prepareStatement("SELECT * FROM streaks WHERE uuid=?")) {
             ps.setString(1, uuid.toString());
 
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-
                     long storedLastClaim = readStoredLastClaim(rs);
                     long normalizedLastClaim = normalizeEpochSeconds(storedLastClaim);
 
-                    PlayerStreak streak = new PlayerStreak(
+                    PlayerStreak loaded = new PlayerStreak(
                             uuid,
                             rs.getString("username"),
                             rs.getInt("current_streak"),
@@ -110,39 +312,37 @@ public class LoginStreakManager {
                             readStoredGraceCycleKey(rs)
                     );
 
-                    cache.put(uuid, streak);
+                    cache.put(uuid, loaded);
 
                     if (normalizedLastClaim != storedLastClaim) {
-                        save(streak);
+                        saveInternal(loaded);
                     }
 
-                    return streak;
+                    if (!Objects.equals(loaded.username, username)) {
+                        loaded.username = username;
+                        saveInternal(loaded);
+                    }
+
+                    return loaded;
                 }
             }
-
-        } catch (Exception e) {
-            e.printStackTrace();
         }
 
-        int currentGraceCycle = getCurrentGraceCycleKey();
-
-        PlayerStreak streak = new PlayerStreak(
+        PlayerStreak created = new PlayerStreak(
                 uuid,
                 username,
                 0,
                 0,
                 0,
                 0,
-                currentGraceCycle
+                getCurrentGraceCycleKey(currentEpochSecond())
         );
-
-        cache.put(uuid, streak);
-
-        return streak;
-
+        cache.put(uuid, created);
+        return created;
     }
 
-    public synchronized void save(PlayerStreak streak) {
+    private void saveInternal(PlayerStreak streak) throws Exception {
+        ensureConnection();
 
         streak.lastClaim = normalizeEpochSeconds(streak.lastClaim);
 
@@ -158,7 +358,6 @@ public class LoginStreakManager {
                 grace_used = excluded.grace_used,
                 grace_week = excluded.grace_week
         """)) {
-
             ps.setString(1, streak.uuid.toString());
             ps.setString(2, streak.username);
             ps.setInt(3, streak.current);
@@ -166,245 +365,172 @@ public class LoginStreakManager {
             ps.setLong(5, streak.lastClaim);
             ps.setInt(6, streak.graceUsed);
             ps.setInt(7, streak.graceWeek);
-
             ps.executeUpdate();
-
-        } catch (Exception e) {
-            e.printStackTrace();
         }
 
         invalidateLeaderboardCache();
-
     }
 
-    /**
-     * Handle a claim event after AxRewards has already decided the reward is claimable.
-     * This method never gates claim availability. It only updates streak state after a claim happens.
-     */
-    public synchronized boolean handleClaim(Player player, boolean countsForStreak) {
-        return handleClaim(player.getUniqueId(), player.getName(), countsForStreak);
-    }
-
-    public synchronized boolean handleClaim(UUID uuid, String username, boolean countsForStreak) {
-
-        if (!countsForStreak) {
-            return false;
-        }
-
-        PlayerStreak streak = get(uuid, username);
-
-        long now = Instant.now().getEpochSecond();
-
-        int currentGraceCycle = getCurrentGraceCycleKey();
-
-        if (streak.graceWeek != currentGraceCycle) {
-            streak.graceWeek = currentGraceCycle;
-            streak.graceUsed = 0;
-        }
-
-        if (streak.lastClaim == 0) {
-
-            streak.current = 1;
-            if (streak.highest < 1) {
-                streak.highest = 1;
-            }
-            streak.lastClaim = now;
-
-            save(streak);
-            return true;
-
-        }
-
-        long lastClaim = normalizeEpochSeconds(streak.lastClaim);
-        long elapsed = now - lastClaim;
-
-        if (elapsed < 0) {
-            elapsed = 0;
-        }
-
-        // Missed claim windows are counted in 24h units.
-        // Examples:
-        // 24h  -> 0 missed windows
-        // 48h  -> 1 missed window
-        // 72h  -> 2 missed windows
-        long missedWindows = (elapsed / DAY_SECONDS) - 1L;
-        if (missedWindows < 0) {
-            missedWindows = 0;
-        }
-
+    private Projection project(PlayerStreak streak, long now) {
         int maxGrace = getMaxGracePerCycle();
-        int availableGraces = Math.max(0, maxGrace - streak.graceUsed);
-
-        if (missedWindows <= availableGraces) {
-
-            streak.current++;
-            streak.graceUsed += (int) missedWindows;
-
-        } else {
-            if (!plugin.getConfig().getBoolean("axrewards.login-streaks.pause", false)) { // prevent streak reset if pause is true
-                // Grace limit exceeded: streak is broken and starts again from 1 on this claim.
-                streak.current = 1;
-                streak.graceUsed = 0;
-            }
-        }
-
-        if (streak.current > streak.highest) {
-            streak.highest = streak.current;
-        }
-
-        streak.lastClaim = now;
-
-        save(streak);
-
-        return true;
-
-    }
-
-    public synchronized int getCurrentStreak(Player player) {
-        return get(player.getUniqueId(), player.getName()).current;
-    }
-
-    public synchronized int getHighestStreak(Player player) {
-        return get(player.getUniqueId(), player.getName()).highest;
-    }
-
-    public synchronized int getMaxGracePerCycle() {
-        return Math.max(0, getConfigIntWithFallback("grace_per_week", 2));
-    }
-
-    public synchronized int getAvailableGraces(Player player) {
-        PlayerStreak streak = get(player.getUniqueId(), player.getName());
-        int maxGrace = getMaxGracePerCycle();
-        int currentGraceCycle = getCurrentGraceCycleKey();
-
-        if (streak.graceWeek != currentGraceCycle) {
-            return maxGrace;
-        }
-
-        return Math.max(0, maxGrace - streak.graceUsed);
-    }
-
-
-    /// Informational only. This is just an estimate based on config and database.
-    public synchronized Duration getTimeUntilStreakReset(Player player) {
-        PlayerStreak streak = get(player.getUniqueId(), player.getName());
+        int currentGraceCycle = getCurrentGraceCycleKey(now);
+        int effectiveGraceUsed = streak.graceWeek == currentGraceCycle ? streak.graceUsed : 0;
 
         if (streak.lastClaim <= 0) {
-            return null;
+            return new Projection(
+                    0,
+                    streak.highest,
+                    0,
+                    currentGraceCycle,
+                    maxGrace,
+                    true,
+                    false,
+                    false,
+                    null
+            );
         }
 
-        long now = Instant.now().getEpochSecond();
         long lastClaim = normalizeEpochSeconds(streak.lastClaim);
-        long elapsed = now - lastClaim;
+        long elapsed = Math.max(0L, now - lastClaim);
+        long claimPeriodSeconds = getClaimPeriodSeconds();
+        long missedWindows = Math.max(0L, (elapsed / claimPeriodSeconds) - 1L);
+        int availableBefore = Math.max(0, maxGrace - effectiveGraceUsed);
+        boolean pause = plugin.getConfig().getBoolean("axrewards.login-streaks.pause", false);
 
-        if (elapsed < 0) {
-            elapsed = 0;
-        }
-
-        long resetWindow = (long) (getAvailableGraces(player) + 2L) * DAY_SECONDS;
-        long remaining = Math.max(0L, resetWindow - elapsed);
-
-        return Duration.ofSeconds(remaining);
-    }
-
-    /**
-     * Returns the remaining time until the next grace cycle begins.
-     * Uses UTC and the configured grace_reset_day / grace_reset_time values.
-     */
-    public synchronized Duration getTimeUntilGraceReset() {
-        ZonedDateTime now = ZonedDateTime.now(GRACE_ZONE);
-        ZonedDateTime nextReset = getNextGraceResetInstant(now);
-        Duration remaining = Duration.between(now, nextReset);
-        return remaining.isNegative() ? Duration.ZERO : remaining;
-    }
-
-    public synchronized List<PlayerStreak> getTopCurrent(int limit) {
-
-        updateLeaderboardsIfNeeded();
-
-        return cachedTopCurrent.stream().limit(limit).toList();
-
-    }
-
-    public synchronized List<PlayerStreak> getTopHighest(int limit) {
-
-        updateLeaderboardsIfNeeded();
-
-        return cachedTopHighest.stream().limit(limit).toList();
-
-    }
-
-    private synchronized void updateLeaderboardsIfNeeded() {
-
-        long intervalMinutes = getConfigLongWithFallback("leaderboard_update_interval_minutes", 10L);
-        long intervalMillis = intervalMinutes * 60 * 1000;
-        long now = System.currentTimeMillis();
-
-        if (now - lastLeaderboardUpdate < intervalMillis)
-            return;
-
-        cachedTopCurrent = queryTop("current_streak", true);
-        cachedTopHighest = queryTop("highest_streak", false);
-
-        lastLeaderboardUpdate = now;
-
-    }
-
-    private List<PlayerStreak> queryTop(String column, boolean activeOnly) {
-
-        if (!"current_streak".equals(column) && !"highest_streak".equals(column)) {
-            throw new IllegalArgumentException("Invalid leaderboard column: " + column);
-        }
-
-        List<PlayerStreak> list = new ArrayList<>();
-
-        String sql = "SELECT * FROM streaks "
-                + (activeOnly ? "WHERE current_streak > 0 " : "")
-                + "ORDER BY " + column + " DESC LIMIT ?";
-
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setInt(1, 100);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    long storedLastClaim = readStoredLastClaim(rs);
-                    list.add(new PlayerStreak(
-                            UUID.fromString(rs.getString("uuid")),
-                            rs.getString("username"),
-                            rs.getInt("current_streak"),
-                            rs.getInt("highest_streak"),
-                            normalizeEpochSeconds(storedLastClaim),
-                            rs.getInt("grace_used"),
-                            readStoredGraceCycleKey(rs)
-                    ));
-                }
+        if (missedWindows > availableBefore) {
+            if (pause) {
+                return new Projection(
+                        streak.current,
+                        streak.highest,
+                        effectiveGraceUsed,
+                        currentGraceCycle,
+                        0,
+                        false,
+                        false,
+                        true,
+                        Duration.ZERO
+                );
             }
 
-        } catch (Exception e) {
-            e.printStackTrace();
+            return new Projection(
+                    0,
+                    streak.highest,
+                    maxGrace,
+                    currentGraceCycle,
+                    0,
+                    false,
+                    true,
+                    false,
+                    Duration.ZERO
+            );
         }
 
-        return list;
+        int consumedGrace = (int) missedWindows;
+        int availableAfter = Math.max(0, availableBefore - consumedGrace);
+        long resetWindow = ((long) availableBefore + 2L) * claimPeriodSeconds;
+        Duration remaining = Duration.ofSeconds(Math.max(0L, resetWindow - elapsed));
 
+        return new Projection(
+                streak.current,
+                streak.highest,
+                effectiveGraceUsed + consumedGrace,
+                currentGraceCycle,
+                availableAfter,
+                false,
+                false,
+                false,
+                remaining
+        );
     }
 
-    private synchronized void invalidateLeaderboardCache() {
-        lastLeaderboardUpdate = 0;
+    private void updateLeaderboardsIfNeeded() throws Exception {
+        long intervalMinutes = Math.max(0L, getConfigLongWithFallback("leaderboard_update_interval_minutes", 10L));
+        long intervalMillis = intervalMinutes * 60_000L;
+        long now = System.currentTimeMillis();
+
+        if (intervalMillis > 0L && now - lastLeaderboardUpdate < intervalMillis) {
+            return;
+        }
+
+        List<PlayerStreak> rows = loadAllRows();
+        long nowEpoch = currentEpochSecond();
+
+        cachedTopCurrent = rows.stream()
+                .map(row -> {
+                    Projection projection = project(row, nowEpoch);
+                    if (projection.current() <= 0) {
+                        return null;
+                    }
+
+                    PlayerStreak projected = row.copy();
+                    projected.current = projection.current();
+                    projected.graceUsed = projection.graceUsed();
+                    projected.graceWeek = projection.graceCycle();
+                    return projected;
+                })
+                .filter(Objects::nonNull)
+                .sorted(Comparator
+                        .comparingInt((PlayerStreak streak) -> streak.current)
+                        .reversed()
+                        .thenComparing(streak -> streak.username == null ? "" : streak.username, String.CASE_INSENSITIVE_ORDER))
+                .limit(100)
+                .toList();
+
+        cachedTopHighest = rows.stream()
+                .map(PlayerStreak::copy)
+                .sorted(Comparator
+                        .comparingInt((PlayerStreak streak) -> streak.highest)
+                        .reversed()
+                        .thenComparing(streak -> streak.username == null ? "" : streak.username, String.CASE_INSENSITIVE_ORDER))
+                .limit(100)
+                .toList();
+
+        lastLeaderboardUpdate = now;
     }
 
-    private synchronized int getCurrentGraceCycleKey() {
-        ZonedDateTime now = ZonedDateTime.now(GRACE_ZONE);
-        ZonedDateTime currentCycleStart = getPreviousGraceResetInstant(now);
-        ZonedDateTime anchor = getGraceResetAnchorInstant();
+    private List<PlayerStreak> loadAllRows() throws Exception {
+        ensureConnection();
 
-        long currentCycleSeconds = currentCycleStart.toEpochSecond();
-        long anchorSeconds = anchor.toEpochSecond();
+        List<PlayerStreak> rows = new ArrayList<>();
 
-        long cycleIndex = Math.floorDiv(currentCycleSeconds - anchorSeconds, WEEK_SECONDS);
+        try (PreparedStatement ps = connection.prepareStatement("SELECT * FROM streaks");
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                rows.add(new PlayerStreak(
+                        UUID.fromString(rs.getString("uuid")),
+                        rs.getString("username"),
+                        rs.getInt("current_streak"),
+                        rs.getInt("highest_streak"),
+                        normalizeEpochSeconds(readStoredLastClaim(rs)),
+                        rs.getInt("grace_used"),
+                        readStoredGraceCycleKey(rs)
+                ));
+            }
+        }
+
+        return rows;
+    }
+
+    private List<PlayerStreak> copyLeaderboard(List<PlayerStreak> source, int limit) {
+        return source.stream()
+                .limit(Math.max(0, limit))
+                .map(PlayerStreak::copy)
+                .toList();
+    }
+
+    private void invalidateLeaderboardCache() {
+        lastLeaderboardUpdate = 0L;
+    }
+
+    private int getCurrentGraceCycleKey(long nowEpochSecond) {
+        long anchorSeconds = getGraceResetAnchorEpochSecond();
+        long cycleSeconds = getGraceCycleSeconds();
+        long cycleIndex = Math.floorDiv(nowEpochSecond - anchorSeconds, cycleSeconds);
         return Math.toIntExact(cycleIndex);
     }
 
-    private ZonedDateTime getGraceResetAnchorInstant() {
+    private long getGraceResetAnchorEpochSecond() {
         ZonedDateTime epoch = Instant.EPOCH.atZone(GRACE_ZONE);
         DayOfWeek resetDay = getConfiguredGraceResetDayOfWeek();
         LocalTime resetTime = getConfiguredGraceResetTime();
@@ -419,46 +545,74 @@ public class LoginStreakManager {
             anchor = anchor.plusWeeks(1);
         }
 
-        return anchor;
+        return anchor.toEpochSecond();
     }
 
-    private ZonedDateTime getPreviousGraceResetInstant(ZonedDateTime now) {
-        DayOfWeek resetDay = getConfiguredGraceResetDayOfWeek();
-        LocalTime resetTime = getConfiguredGraceResetTime();
-
-        ZonedDateTime candidate = now
-                .with(TemporalAdjusters.previousOrSame(resetDay))
-                .with(resetTime)
-                .withSecond(0)
-                .withNano(0);
-
-        if (candidate.isAfter(now)) {
-            candidate = candidate.minusWeeks(1);
-        }
-
-        return candidate;
+    private long getClaimPeriodSeconds() {
+        return Math.max(1L, getDurationConfig("claim_period", Duration.ofDays(1)).toSeconds());
     }
 
-    private ZonedDateTime getNextGraceResetInstant(ZonedDateTime now) {
-        DayOfWeek resetDay = getConfiguredGraceResetDayOfWeek();
-        LocalTime resetTime = getConfiguredGraceResetTime();
+    private long getGraceCycleSeconds() {
+        return Math.max(1L, getDurationConfig("grace_reset_period", Duration.ofDays(7)).toSeconds());
+    }
 
-        ZonedDateTime candidate = now
-                .with(TemporalAdjusters.nextOrSame(resetDay))
-                .with(resetTime)
-                .withSecond(0)
-                .withNano(0);
-
-        if (!candidate.isAfter(now)) {
-            candidate = candidate.plusWeeks(1);
+    private Duration getDurationConfig(String key, Duration def) {
+        String raw = getConfigStringWithFallback(key, null);
+        if (raw == null || raw.isBlank()) {
+            return def;
         }
 
-        return candidate;
+        Duration parsed = parseDuration(raw.trim());
+        if (parsed == null || parsed.isZero() || parsed.isNegative()) {
+            return def;
+        }
+
+        return parsed;
+    }
+
+    private Duration parseDuration(String raw) {
+        try {
+            return Duration.parse(raw.toUpperCase(Locale.ROOT));
+        } catch (Exception ignored) {
+        }
+
+        Matcher matcher = DURATION_TOKEN.matcher(raw);
+        long totalSeconds = 0L;
+        int end = 0;
+        boolean matched = false;
+
+        while (matcher.find()) {
+            if (!raw.substring(end, matcher.start()).trim().isEmpty()) {
+                return null;
+            }
+
+            long amount = Long.parseLong(matcher.group(1));
+            char unit = Character.toLowerCase(matcher.group(2).charAt(0));
+
+            switch (unit) {
+                case 's' -> totalSeconds += amount;
+                case 'm' -> totalSeconds += amount * 60L;
+                case 'h' -> totalSeconds += amount * 3_600L;
+                case 'd' -> totalSeconds += amount * 86_400L;
+                case 'w' -> totalSeconds += amount * 604_800L;
+                default -> {
+                    return null;
+                }
+            }
+
+            matched = true;
+            end = matcher.end();
+        }
+
+        if (!matched || !raw.substring(end).trim().isEmpty()) {
+            return null;
+        }
+
+        return Duration.ofSeconds(totalSeconds);
     }
 
     private DayOfWeek getConfiguredGraceResetDayOfWeek() {
-        int rawDay = getConfigIntWithFallback("grace_reset_day", 0);
-        rawDay = Math.max(0, Math.min(6, rawDay));
+        int rawDay = Math.max(0, Math.min(6, getConfigIntWithFallback("grace_reset_day", 0)));
 
         return switch (rawDay) {
             case 0 -> DayOfWeek.SUNDAY;
@@ -493,47 +647,79 @@ public class LoginStreakManager {
         return rs.getLong("last_claim");
     }
 
-    /**
-     * Reads the stored grace cycle key.
-     *
-     * New format: schedule cycle index counted from the first configured reset instant after the Unix epoch.
-     *
-     * Legacy format: plain week number (1-53) or old year-week-style values.
-     * For legacy rows, we reset to the current cycle key so the player is aligned to the new config-driven system.
-     */
     private int readStoredGraceCycleKey(ResultSet rs) throws Exception {
         int storedGraceWeek = rs.getInt("grace_week");
 
-        // New cycle keys from this implementation are small, relative counters.
-        // Old values were either 1-53 or 6-digit year-week codes.
-        if (storedGraceWeek > 53 && storedGraceWeek < 10000) {
-            return storedGraceWeek;
+        if (storedGraceWeek <= 53 || storedGraceWeek >= 100000) {
+            return getCurrentGraceCycleKey(currentEpochSecond());
         }
 
-        return getCurrentGraceCycleKey();
+        return storedGraceWeek;
     }
-
-    // ----------------- Config helpers (prefer axrewards.login-streaks, fallback to login_streaks) -----------------
 
     private int getConfigIntWithFallback(String key, int def) {
         String axPath = "axrewards.login-streaks." + key;
         String oldPath = "login_streaks." + key;
-        if (plugin.getConfig().contains(axPath)) return plugin.getConfig().getInt(axPath);
+        if (plugin.getConfig().contains(axPath)) {
+            return plugin.getConfig().getInt(axPath);
+        }
         return plugin.getConfig().getInt(oldPath, def);
     }
 
     private long getConfigLongWithFallback(String key, long def) {
         String axPath = "axrewards.login-streaks." + key;
         String oldPath = "login_streaks." + key;
-        if (plugin.getConfig().contains(axPath)) return plugin.getConfig().getLong(axPath);
+        if (plugin.getConfig().contains(axPath)) {
+            return plugin.getConfig().getLong(axPath);
+        }
         return plugin.getConfig().getLong(oldPath, def);
     }
 
     private String getConfigStringWithFallback(String key, String def) {
         String axPath = "axrewards.login-streaks." + key;
         String oldPath = "login_streaks." + key;
-        if (plugin.getConfig().contains(axPath)) return plugin.getConfig().getString(axPath, def);
+        if (plugin.getConfig().contains(axPath)) {
+            return plugin.getConfig().getString(axPath, def);
+        }
         return plugin.getConfig().getString(oldPath, def);
+    }
+
+    private long currentEpochSecond() {
+        return Instant.now().getEpochSecond();
+    }
+
+    private void ensureConnection() {
+        if (connection == null) {
+            throw new IllegalStateException("Streak database is not initialized.");
+        }
+    }
+
+    private void closeConnectionQuietly() {
+        if (connection == null) {
+            return;
+        }
+
+        try {
+            connection.close();
+        } catch (Exception ex) {
+            plugin.getLogger().warning("Failed to close streak database: " + ex.getMessage());
+        } finally {
+            connection = null;
+        }
+    }
+
+    private <T> CompletableFuture<T> runOnDbThread(Callable<T> callable) {
+        if (closed) {
+            return CompletableFuture.failedFuture(new IllegalStateException("Streak manager is already closed."));
+        }
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return callable.call();
+            } catch (Exception ex) {
+                throw new CompletionException(ex);
+            }
+        }, dbExecutor);
     }
 
 }

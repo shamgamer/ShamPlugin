@@ -38,8 +38,8 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(@NonNull CommandSender sender, @NonNull Command cmd, @NonNull String label, String @NonNull [] args) {
 
-        if (sender instanceof Player p) {
-            if (!p.isOp() && !p.hasPermission("kakchuplugin.admin")) {
+        if (sender instanceof Player player) {
+            if (!player.isOp() && !player.hasPermission("kakchuplugin.admin")) {
                 sender.sendMessage("§cYou do not have permission.");
                 return true;
             }
@@ -61,9 +61,6 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
 
         String resolvedName = offline.getName() != null ? offline.getName() : targetName;
 
-        PlayerStreak ps = manager.get(offline.getUniqueId(), resolvedName);
-        int currentStreak = (ps == null) ? 0 : ps.current;
-
         String typePath = resolveTypePath(typeInput);
         if (typePath == null) {
             sender.sendMessage("§7No rewards configured for type: " + typeInput);
@@ -78,63 +75,54 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
 
         boolean shouldIncrement = plugin.getConfig().getBoolean(typePath + ".streak", false);
 
-        List<Integer> keys = bonusesSection.getKeys(false).stream().map(k -> {
-            try { return Integer.parseInt(k); } catch (NumberFormatException ex) { return null; }
-        }).filter(Objects::nonNull).sorted().collect(Collectors.toList());
+        manager.processClaimAsync(offline.getUniqueId(), resolvedName, shouldIncrement)
+                .whenComplete((claimResult, throwable) -> Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (throwable != null) {
+                        plugin.getLogger().warning("Failed to process streak claim for " + resolvedName + ": " + throwable.getMessage());
+                        sender.sendMessage("§cCould not process the reward for " + resolvedName + ".");
+                        return;
+                    }
 
-        Integer selectedThreshold = null;
-        for (Integer k : keys) {
-            if (k <= currentStreak) selectedThreshold = k;
-        }
+                    List<Integer> keys = bonusesSection.getKeys(false).stream().map(key -> {
+                        try {
+                            return Integer.parseInt(key);
+                        } catch (NumberFormatException ex) {
+                            return null;
+                        }
+                    }).filter(Objects::nonNull).sorted().collect(Collectors.toList());
 
-        if (selectedThreshold == null) {
-            sender.sendMessage("§7No reward configured for streak " + currentStreak + " (" + typeInput + ").");
+                    Integer selectedThreshold = null;
+                    for (Integer key : keys) {
+                        if (key <= claimResult.rewardStreak()) {
+                            selectedThreshold = key;
+                        }
+                    }
 
-            if (shouldIncrement) {
-                boolean updated = manager.handleClaim(offline.getUniqueId(), resolvedName, true);
-                if (updated) {
-                    sender.sendMessage("§aIncremented streak for " + resolvedName + " to " + manager.get(offline.getUniqueId(), resolvedName).current);
-                } else {
-                    sender.sendMessage("§cCould not update the streak for " + resolvedName + ".");
-                }
-            }
+                    if (selectedThreshold == null) {
+                        sender.sendMessage("§7No reward configured for streak " + claimResult.rewardStreak() + " (" + typeInput + ").");
+                        sendStreakUpdateMessage(sender, resolvedName, shouldIncrement, claimResult);
+                        return;
+                    }
 
-            return true;
-        }
+                    List<String> configuredCommands = getConfiguredCommands(typePath, selectedThreshold);
+                    if (configuredCommands.isEmpty()) {
+                        sender.sendMessage("§7No commands configured for threshold " + selectedThreshold + " (" + typeInput + ").");
+                        sendStreakUpdateMessage(sender, resolvedName, shouldIncrement, claimResult);
+                        return;
+                    }
 
-        String commandsPath = typePath + ".bonuses." + selectedThreshold + ".commands";
-        List<String> configuredCommands = plugin.getConfig().getStringList(commandsPath);
+                    for (String configuredCommand : configuredCommands) {
+                        if (configuredCommand == null || configuredCommand.isBlank()) {
+                            continue;
+                        }
 
-        if (configuredCommands == null || configuredCommands.isEmpty()) {
-            Object raw = plugin.getConfig().get(typePath + ".bonuses." + selectedThreshold);
-            if (raw instanceof List<?>) {
-                configuredCommands = ((List<?>) raw).stream().map(Object::toString).collect(Collectors.toList());
-            } else if (raw instanceof String) {
-                configuredCommands = Collections.singletonList((String) raw);
-            }
-        }
+                        String replaced = configuredCommand.replace("%player%", resolvedName);
+                        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), replaced);
+                    }
 
-        if (configuredCommands == null || configuredCommands.isEmpty()) {
-            sender.sendMessage("§7No commands configured for threshold " + selectedThreshold + " (" + typeInput + ").");
-            return true;
-        }
-
-        for (String c : configuredCommands) {
-            if (c == null || c.isBlank()) continue;
-            String replaced = c.replace("%player%", resolvedName);
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), replaced);
-        }
-
-        sender.sendMessage("§aExecuted configured reward commands for " + resolvedName + " (threshold " + selectedThreshold + ", " + typeInput + ").");
-
-        if (shouldIncrement) {
-            boolean updated = manager.handleClaim(offline.getUniqueId(), resolvedName, true);
-            if (updated) {
-                sender.sendMessage("§aIncremented streak for " + resolvedName + " to " + manager.get(offline.getUniqueId(), resolvedName).current);
-            } else {
-                sender.sendMessage("§cCould not update the streak for " + resolvedName + ".");
-            }
-        }
+                    sender.sendMessage("§aExecuted configured reward commands for " + resolvedName + " (threshold " + selectedThreshold + ", " + typeInput + ").");
+                    sendStreakUpdateMessage(sender, resolvedName, shouldIncrement, claimResult);
+                }));
 
         return true;
     }
@@ -185,5 +173,34 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
         }
 
         return new ArrayList<>(types);
+    }
+
+    private List<String> getConfiguredCommands(String typePath, int selectedThreshold) {
+        String commandsPath = typePath + ".bonuses." + selectedThreshold + ".commands";
+        List<String> configuredCommands = plugin.getConfig().getStringList(commandsPath);
+
+        if (configuredCommands == null || configuredCommands.isEmpty()) {
+            Object raw = plugin.getConfig().get(typePath + ".bonuses." + selectedThreshold);
+            if (raw instanceof List<?>) {
+                configuredCommands = ((List<?>) raw).stream().map(Object::toString).collect(Collectors.toList());
+            } else if (raw instanceof String) {
+                configuredCommands = Collections.singletonList((String) raw);
+            }
+        }
+
+        return configuredCommands == null ? Collections.emptyList() : configuredCommands;
+    }
+
+    private void sendStreakUpdateMessage(CommandSender sender, String resolvedName, boolean shouldIncrement, LoginStreakManager.ClaimResult claimResult) {
+        if (!shouldIncrement) {
+            return;
+        }
+
+        if (claimResult.streakIncremented()) {
+            sender.sendMessage("§aIncremented streak for " + resolvedName + " to " + claimResult.currentStreak());
+            return;
+        }
+
+        sender.sendMessage("§eStreak for " + resolvedName + " remains " + claimResult.currentStreak() + ".");
     }
 }

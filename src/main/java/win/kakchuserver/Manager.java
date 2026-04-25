@@ -2,7 +2,11 @@ package win.kakchuserver;
 
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
+import win.kakchuserver.streaks.LoginStreakManager;
+import win.kakchuserver.streaks.RewardCommand;
+import win.kakchuserver.streaks.StreakCommands;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -10,15 +14,12 @@ import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import win.kakchuserver.streaks.LoginStreakManager;
-import win.kakchuserver.streaks.StreakCommands;
-import win.kakchuserver.streaks.RewardCommand;
-
 public class Manager extends JavaPlugin {
 
     private static Manager instance;
     private Alerts alertsHandler;
     private UptimeTracker tracker;
+    private LoginStreakManager streakManager;
 
     private volatile String updateAvailableMessage;
     private volatile String updateAvailableVersion;
@@ -67,15 +68,15 @@ public class Manager extends JavaPlugin {
             tracker = null;
         }
 
-        /*
-         * Explicit command registration: register only the commands handled by Commands,
-         * register uptime separately if tracker is available, and leave other commands
-         * (streaks, kakchureward) to be set later after streak manager is initialized.
-         */
         registerCommand("map", new Commands());
         registerCommand("help", new Commands());
+
         if (tracker != null) {
-            registerCommand("uptime", new UptimeTracker.UptimeCommand(tracker));
+            UptimeTracker.UptimeCommand uptimeCommand = new UptimeTracker.UptimeCommand(tracker);
+            registerCommand("uptime", uptimeCommand);
+
+            PluginCommand uptime = Objects.requireNonNull(getCommand("uptime"), "Command 'uptime' missing from plugin.yml");
+            uptime.setTabCompleter(uptimeCommand);
         }
 
         long startDelay = getConfig().getLong("restarter.start-delay-ticks", 432000L);
@@ -87,24 +88,26 @@ public class Manager extends JavaPlugin {
             getLogger().log(Level.SEVERE, "Failed to schedule Restarter task: " + e.getMessage(), e);
         }
 
-        // use axrewards.login-streaks.* as the config path for enabling streaks
         if (getConfig().getBoolean("axrewards.login-streaks.enabled", true)) {
+            streakManager = new LoginStreakManager(this);
+            if (!streakManager.init()) {
+                getLogger().severe("Login streaks disabled because the streak database failed to initialize.");
+                streakManager.shutdown();
+                streakManager = null;
+            } else {
+                StreakCommands streakCommands = new StreakCommands(this, streakManager);
 
-            LoginStreakManager streakManager = new LoginStreakManager(this);
-            streakManager.init();
+                Objects.requireNonNull(getCommand("streak"), "Command 'streak' missing from plugin.yml").setExecutor(streakCommands);
+                Objects.requireNonNull(getCommand("streaktop"), "Command 'streaktop' missing from plugin.yml").setExecutor(streakCommands);
+                Objects.requireNonNull(getCommand("higheststreaktop"), "Command 'higheststreaktop' missing from plugin.yml").setExecutor(streakCommands);
+                Objects.requireNonNull(getCommand("streakset"), "Command 'streakset' missing from plugin.yml").setExecutor(streakCommands);
 
-            StreakCommands streakCommands = new StreakCommands(this, streakManager);
+                RewardCommand rewardCommand = new RewardCommand(this, streakManager);
+                Objects.requireNonNull(getCommand("kakchureward"), "Command 'kakchureward' missing from plugin.yml").setExecutor(rewardCommand);
+                Objects.requireNonNull(getCommand("kakchureward"), "Command 'kakchureward' missing from plugin.yml").setTabCompleter(rewardCommand);
 
-            Objects.requireNonNull(getCommand("streak"), "Command 'streak' missing from plugin.yml").setExecutor(streakCommands);
-            Objects.requireNonNull(getCommand("streaktop"), "Command 'streaktop' missing from plugin.yml").setExecutor(streakCommands);
-            Objects.requireNonNull(getCommand("higheststreaktop"), "Command 'higheststreaktop' missing from plugin.yml").setExecutor(streakCommands);
-            Objects.requireNonNull(getCommand("streakset"), "Command 'streakset' missing from plugin.yml").setExecutor(streakCommands);
-
-            RewardCommand rewardCommand = new RewardCommand(this, streakManager);
-            Objects.requireNonNull(getCommand("kakchureward"), "Command 'kakchureward' missing from plugin.yml").setExecutor(rewardCommand);
-            Objects.requireNonNull(getCommand("kakchureward"), "Command 'kakchureward' missing from plugin.yml").setTabCompleter(rewardCommand);
-
-            new PlayerNotifier(this, streakManager).register();
+                new PlayerNotifier(this, streakManager).register();
+            }
         }
     }
 
@@ -152,6 +155,14 @@ public class Manager extends JavaPlugin {
                 tracker.stop();
             } catch (Exception e) {
                 getLogger().log(Level.WARNING, "Failed to stop UptimeTracker cleanly: " + e.getMessage(), e);
+            }
+        }
+
+        if (streakManager != null) {
+            try {
+                streakManager.shutdown();
+            } catch (Exception e) {
+                getLogger().log(Level.WARNING, "Failed to stop LoginStreakManager cleanly: " + e.getMessage(), e);
             }
         }
 

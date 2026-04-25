@@ -3,6 +3,7 @@ package win.kakchuserver;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -40,7 +41,7 @@ import java.util.logging.Level;
  * - Recovery from tmp / backups if main file is missing/empty/invalid
  * - Persist heartbeat (runningSince) together with interval end updates
  * - Coalesced async saves (latest snapshot wins) to prevent backlog
-
+ *
  * Config keys:
  * uptime:
  *   flush-interval-seconds: 1
@@ -718,7 +719,7 @@ public class UptimeTracker {
     }
 
     /**
-     * period: "day", "week", "month", "year", "all"
+     * period: "day", "week", "month", "year", "all", "alltime"
      * rolling: "24h", "7d", "30d", "365d"
      */
     public synchronized UptimeSummary getSummary(String period) {
@@ -764,8 +765,14 @@ public class UptimeTracker {
                 break;
             }
             case "all":
-            case "alltime":
             case "overall": {
+                long trackedSince = cfg.getLong(KEY_ALLTIME_SINCE, now);
+                uptimeSeconds = computeOverlap(trackedSince, now);
+                periodPossibleSeconds = Math.max(0L, (now - trackedSince) / 1000L);
+                label = "All";
+                break;
+            }
+            case "alltime": {
                 long trackedSince = cfg.getLong(KEY_ALLTIME_SINCE, now);
                 uptimeSeconds = computeOverlap(trackedSince, now);
                 periodPossibleSeconds = Math.max(0L, (now - trackedSince) / 1000L);
@@ -908,7 +915,7 @@ public class UptimeTracker {
                                 Instant trackedSince) {
     }
 
-    public static class UptimeCommand implements CommandExecutor {
+    public static class UptimeCommand implements CommandExecutor, TabCompleter {
         private final UptimeTracker tracker;
 
         public UptimeCommand(UptimeTracker tracker) {
@@ -935,14 +942,15 @@ public class UptimeTracker {
             if (period.equals("w")) period = "week";
             if (period.equals("m")) period = "month";
             if (period.equals("y")) period = "year";
-            if (period.equals("a")) period = "all";
+            if (period.equals("a")) period = "alltime";
+            if (period.equals("all")) period = "all";
             if (period.equals("24") || period.equals("1d") || period.equals("past24") || period.equals("pastday")) period = "24h";
             if (period.equals("7") || period.equals("1w") || period.equals("past7") || period.equals("pastweek") || period.equals("1week")) period = "7d";
             if (period.equals("30") || period.equals("1m") || period.equals("past30") || period.equals("pastmonth") || period.equals("1month")) period = "30d";
             if (period.equals("365") || period.equals("1y") || period.equals("past365") || period.equals("pastyear") || period.equals("1year")) period = "365d";
 
             if (period.equals("help")) {
-                sender.sendMessage("/uptime [day|week|month|year|all|24h|7d|30d|365d]");
+                sender.sendMessage("/uptime [day|week|month|year|all|alltime|24h|7d|30d|365d]");
                 return true;
             }
 
@@ -950,14 +958,40 @@ public class UptimeTracker {
             return true;
         }
 
+        @Override
+        public List<String> onTabComplete(@NotNull CommandSender sender,
+                                          @NotNull Command command,
+                                          @NotNull String alias,
+                                          @NotNull String[] args) {
+            if (args.length != 1) {
+                return Collections.emptyList();
+            }
+
+            List<String> options = List.of(
+                    "day", "week", "month", "year", "all", "alltime",
+                    "24h", "7d", "30d", "365d"
+            );
+
+            String input = args[0].toLowerCase(Locale.ROOT);
+            List<String> matches = new ArrayList<>();
+
+            for (String option : options) {
+                if (option.startsWith(input)) {
+                    matches.add(option);
+                }
+            }
+
+            return matches;
+        }
+
         private void sendSummary(CommandSender sender, String period) {
             UptimeSummary s = tracker.getSummary(period);
             if (s == null) {
-                sender.sendMessage("§cUnknown period. Use day/week/month/year/all or 24h/7d/30d/365d");
+                sender.sendMessage("§cUnknown period. Use day/week/month/year/all/alltime or 24h/7d/30d/365d");
                 return;
             }
             String percentStr = String.format(Locale.ROOT, "%.2f", s.percent);
-            sender.sendMessage("§6Uptime — " + s.label + ":");
+            sender.sendMessage("§6Uptime - " + s.label + ":");
             sender.sendMessage(" §7Up: §a" + formatSeconds(s.uptimeSeconds)
                     + " §7/ Since start: §a" + formatSeconds(s.possibleSeconds)
                     + " §7(" + percentStr + "%)");
