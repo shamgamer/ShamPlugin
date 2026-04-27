@@ -1,4 +1,4 @@
-package win.kakchuserver;
+package win.shamserver;
 
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
@@ -326,7 +326,7 @@ public class Alerts extends Handler {
             LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
             Configuration config = ctx.getConfiguration();
 
-            String name = "KakchuDiscordAlerts-" + System.identityHashCode(this);
+            String name = "shamDiscordAlerts-" + System.identityHashCode(this);
             DiscordLog4jAppender app = new DiscordLog4jAppender(name, this);
             app.start();
 

@@ -1,12 +1,12 @@
-package win.kakchuserver;
+package win.shamserver;
 
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
-import win.kakchuserver.streaks.LoginStreakManager;
-import win.kakchuserver.streaks.RewardCommand;
-import win.kakchuserver.streaks.StreakCommands;
+import win.shamserver.streaks.LoginStreakManager;
+import win.shamserver.streaks.RewardCommand;
+import win.shamserver.streaks.StreakCommands;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -50,7 +50,7 @@ public class Manager extends JavaPlugin {
 
         enableDiscordAlertsEarly();
 
-        getLogger().info("Kakchu Plugin enabled!");
+        getLogger().info("Sham Plugin enabled!");
 
         if (getConfig().getBoolean("update-checker.enabled", true)) {
             long hours = Math.max(1, getConfig().getLong("update-checker.interval-hours", 12));
@@ -103,8 +103,8 @@ public class Manager extends JavaPlugin {
                 Objects.requireNonNull(getCommand("streakset"), "Command 'streakset' missing from plugin.yml").setExecutor(streakCommands);
 
                 RewardCommand rewardCommand = new RewardCommand(this, streakManager);
-                Objects.requireNonNull(getCommand("kakchureward"), "Command 'kakchureward' missing from plugin.yml").setExecutor(rewardCommand);
-                Objects.requireNonNull(getCommand("kakchureward"), "Command 'kakchureward' missing from plugin.yml").setTabCompleter(rewardCommand);
+                Objects.requireNonNull(getCommand("streakreward"), "Command 'streakreward' missing from plugin.yml").setExecutor(rewardCommand);
+                Objects.requireNonNull(getCommand("streakreward"), "Command 'streakreward' missing from plugin.yml").setTabCompleter(rewardCommand);
 
                 new PlayerNotifier(this, streakManager).register();
             }
@@ -172,7 +172,7 @@ public class Manager extends JavaPlugin {
             alertsHandler.close();
         }
 
-        getLogger().info("Kakchu Plugin disabled!");
+        getLogger().info("Sham Plugin disabled!");
     }
 
     private void registerCommand(String name, CommandExecutor executor) {

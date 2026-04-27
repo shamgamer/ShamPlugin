@@ -1,4 +1,4 @@
-package win.kakchuserver;
+package win.shamserver;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;

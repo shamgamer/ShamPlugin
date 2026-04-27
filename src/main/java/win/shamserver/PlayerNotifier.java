@@ -1,4 +1,4 @@
-package win.kakchuserver;
+package win.shamserver;
 
 import me.clip.placeholderapi.PlaceholderAPI;
 import net.kyori.adventure.text.Component;
@@ -13,7 +13,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
-import win.kakchuserver.streaks.LoginStreakManager;
+import win.shamserver.streaks.LoginStreakManager;
 
 public final class PlayerNotifier {
 
@@ -37,7 +37,7 @@ public final class PlayerNotifier {
 
 class LoginRewardReminder implements Listener {
 
-    private static final String PERMISSION = "kakchuplugin.loginrewards";
+    private static final String PERMISSION = "shamplugin.loginrewards";
 
     private final JavaPlugin plugin;
     private final LoginStreakManager streakManager;

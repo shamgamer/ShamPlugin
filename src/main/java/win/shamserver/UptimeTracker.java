@@ -1,4 +1,4 @@
-package win.kakchuserver;
+package win.shamserver;
 
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -71,7 +71,7 @@ public class UptimeTracker {
 
     // Single-threaded executor for async writes (coalesced)
     private final ExecutorService saveExecutor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "Kakchu-UptimeSave");
+        Thread t = new Thread(r, "sham-UptimeSave");
         t.setDaemon(true);
         return t;
     });

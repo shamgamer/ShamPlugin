@@ -1,4 +1,4 @@
-package win.kakchuserver.streaks;
+package win.shamserver.streaks;
 
 import java.util.UUID;
 

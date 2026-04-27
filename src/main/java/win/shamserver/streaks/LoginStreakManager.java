@@ -1,4 +1,4 @@
-package win.kakchuserver.streaks;
+package win.shamserver.streaks;
 
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -83,7 +83,7 @@ public class LoginStreakManager {
     public LoginStreakManager(JavaPlugin plugin) {
         this.plugin = plugin;
         this.dbExecutor = Executors.newSingleThreadExecutor(r -> {
-            Thread thread = new Thread(r, "Kakchu-StreakDb");
+            Thread thread = new Thread(r, "sham-StreakDb");
             thread.setDaemon(true);
             return thread;
         });

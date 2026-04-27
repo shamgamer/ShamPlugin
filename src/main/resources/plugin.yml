@@ -1,9 +1,9 @@
-name: Kakchu
+name: ShamPlugin
 version: ${project.version}
 website: https://modrinth.com/project/w6F3AvdX
 authors: ["shamgamer"]
 description: "Build Time: ${build.time}"
-main: win.kakchuserver.Manager
+main: win.shamserver.Manager
 api-version: 1.21
 softdepend:
   - PlaceholderAPI
@@ -14,76 +14,76 @@ commands:
     description: Links to the server's web world map
     usage: /map
     aliases: [servermap, worldmap]
-    permission: kakchuplugin.map
+    permission: shamplugin.map
     permission-message: You do not have permission to use this command.
 
   help:
     description: Shows commands players can use
     usage: /help
-    aliases: [commands, assistance]
-    permission: kakchuplugin.help
+    aliases: [commands]
+    permission: shamplugin.help
     permission-message: You do not have permission to use this command.
 
   uptime:
     description: Shows server uptime statistics (day/week/month/year/all-time)
-    usage: /uptime
-    aliases: [servertime, kakchutime]
-    permission: kakchuplugin.uptime
+    usage: /sham uptime
+    aliases: []
+    permission: shamplugin.uptime
     permission-message: You do not have permission to use this command.
 
   streak:
     description: Shows your login streak
     usage: /streak
-    permission: kakchuplugin.streak
+    permission: shamplugin.streak
     permission-message: You do not have permission to use this command.
 
   streaktop:
     description: Shows login streak leaderboard
     usage: /streaktop
-    permission: kakchuplugin.streak
+    permission: shamplugin.streak
     permission-message: You do not have permission to use this command.
 
   higheststreaktop:
     description: Shows highest streak leaderboard
     usage: /higheststreaktop
-    permission: kakchuplugin.streak
+    permission: shamplugin.streak
     permission-message: You do not have permission to use this command.
 
   streakset:
     description: Set a player's streak
-    usage: /streakset <player> <value>
-    permission: kakchuplugin.admin
+    usage: /sham streak set <player> <value>
+    permission: shamplugin.admin
     permission-message: You do not have permission to use this command.
 
-  kakchureward:
+  streakreward:
     description: Trigger login reward processing (admin)
-    usage: /kakchureward <player> <type>
-    permission: kakchuplugin.admin
+    usage: /sham streak reward <player> <type>
+    permission: shamplugin.admin
     permission-message: You do not have permission to use this command.
 
 permissions:
 
-  kakchuplugin.map:
+  shamplugin.map:
     description: Allows usage of /map command
     default: true
 
-  kakchuplugin.help:
+  shamplugin.help:
     description: Allows usage of /help command
     default: true
 
-  kakchuplugin.uptime:
+  shamplugin.uptime:
     description: Allows usage of /uptime command
     default: true
 
-  kakchuplugin.loginrewards:
+  shamplugin.loginrewards:
     description: Allows login reward reminder message
     default: true
 
-  kakchuplugin.streak:
+  shamplugin.streak:
     description: Allows usage of /streak and /streaktop and /higheststreaktop
     default: true
 
-  kakchuplugin.admin:
+  shamplugin.admin:
     description: Admin commands
     default: op
 

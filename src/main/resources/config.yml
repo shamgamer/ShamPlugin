@@ -12,8 +12,9 @@ discord alerts:
     - "If you do not know what this is, open the Geyser config, and set"
     - "Geyser is configured to use proxy protocol when connecting to the Java server."
 
-links:
-  map-url: "" # the link that will be sent when using /map
+links: # for minecraft color codes in messages, use § instead of &.
+  map-header: "§6Link To The World Map:" # the header before the url for /map. if empty only send link.
+  map-url: "map.changeme.com" # the link that will be sent bellow the header when using /map
 
 uptime:
   flush-interval-seconds: 1
@@ -107,7 +108,7 @@ axrewards:
       volume: 0.75
       pitch: 1.0
   login-streaks:
-    # !! use /kakchureward %player% <list> command in axrewards or outside to use !!
+    # !! use /shamreward %player% <list> command in axrewards or outside to use !!
     enabled: true # toggles login streaks
     pause: false # prevents streaks from being lost when true, useful after long server maintenances
     claim_period: "24h" # how much time must pass before grace is lose (example 24h: 24h for daily then another 24h to claim before grace used)
@@ -120,7 +121,7 @@ axrewards:
     rewards:
       daily: # example of <list> placeholders
         streak: true
-        bonuses: # what commands will be executed if the player has the amount of streaks when /kakchureward is used
+        bonuses: # what commands will be executed if the player has the amount of streaks when /shamreward is used
           3:
             commands: # executed server side %player% from axrewards placeholder
               - "eco give %player% 5"

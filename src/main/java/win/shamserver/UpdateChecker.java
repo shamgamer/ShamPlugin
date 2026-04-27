@@ -1,4 +1,4 @@
-package win.kakchuserver;
+package win.shamserver;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -58,7 +58,7 @@ public final class UpdateChecker implements Runnable {
                     .timeout(Duration.ofSeconds(10))
                     .header("Accept", "application/json")
                     // Modrinth wants a uniquely-identifying User-Agent
-                    .header("User-Agent", "shamgamer/kakchuplugin/" + current)
+                    .header("User-Agent", "shamgamer/shamplugin/" + current)
                     .GET()
                     .build();
 
@@ -118,14 +118,14 @@ public final class UpdateChecker implements Runnable {
 
             // Player-friendly multi-line, colored message (each line starts with a color code).
             String playerMsg =
-                    "§2KakchuPlugin Update!\n" +
+                    "§2shamPlugin Update!\n" +
                             "§7Installed: §c" + current + "\n" +
                             "§7Latest: §a" + latestNumber + "\n" +
                             "§b" + downloadUrl;
 
             // Console-friendly (no color codes, single line)
             String consoleMsg =
-                    "KakchuPlugin update available! Installed: " + current +
+                    "shamPlugin update available! Installed: " + current +
                             " | Latest: " + latestNumber +
                             (downloadUrl.isBlank() ? "" : " | Download: " + downloadUrl);
 

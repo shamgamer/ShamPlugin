@@ -1,4 +1,4 @@
-package win.kakchuserver;
+package win.shamserver;
 
 import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.HoverEvent;
@@ -48,21 +48,35 @@ public class Commands implements CommandExecutor {
             case "map":
             case "servermap":
             case "worldmap":
-                if (!sender.hasPermission("kakchuplugin.map")) {
+                if (!sender.hasPermission("shamplugin.map")) {
                     sender.sendMessage("§cYou do not have permission to use this command.");
                     return true;
                 }
-                String mapUrl = Manager.getInstance().getConfig().getString("links.map-url", "there is no map found in config.");
-                sendMessage(sender,
-                        "§6Link To The World Map:",
-                        "§b§n" + mapUrl
-                );
+
+                String url = String.valueOf(Manager.getInstance().getConfig().getString("links.map-url", "")).trim();
+                String header = String.valueOf(Manager.getInstance().getConfig().getString("links.map-header", "")).trim();
+
+                if (url.isBlank()) {
+                    sendMessage(sender, "§cMap URL empty! Contact an admin to fix the config.");
+                } else if (url.equalsIgnoreCase("map.changeme.com")) {
+                    sendMessage(sender,
+                            "§eTo modify the map link go to:",
+                            "§7plugins/ShamPlugin/config.yml",
+                            "§7and look for §fmap-url",
+                            "if you are unable to find it refer to:",
+                            "https://raw.githubusercontent.com/shamgamer/ShamPlugin/refs/heads/master/src/main/resources/config.yml"
+                    );
+                } else {
+                    sendMessage(sender,
+                            header.isBlank() ? new String[]{"§b§n" + url}
+                                    : new String[]{header, "§b§n" + url}
+                    );
+                }
                 return true;
 
             case "help":
             case "commands":
-            case "assistance":
-                if (!sender.hasPermission("kakchuplugin.help")) {
+                if (!sender.hasPermission("shamplugin.help")) {
                     sender.sendMessage("§cYou do not have permission to use this command.");
                     return true;
                 }

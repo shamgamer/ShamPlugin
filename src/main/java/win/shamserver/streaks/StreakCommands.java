@@ -1,4 +1,4 @@
-package win.kakchuserver.streaks;
+package win.shamserver.streaks;
 
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -110,13 +110,13 @@ public class StreakCommands implements CommandExecutor {
 
         if (name.equals("streakset")) {
 
-            if (!sender.isOp() && !sender.hasPermission("kakchuplugin.admin")) {
+            if (!sender.isOp() && !sender.hasPermission("shamplugin.admin")) {
                 sender.sendMessage("§cYou do not have permission.");
                 return true;
             }
 
             if (args.length < 2) {
-                sender.sendMessage("§cUsage: /streakset <player> <value>");
+                sender.sendMessage("§cUsage: /sham streak set <player> <value>");
                 return true;
             }
 

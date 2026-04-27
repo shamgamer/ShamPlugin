@@ -1,4 +1,4 @@
-package win.kakchuserver.streaks;
+package win.shamserver.streaks;
 
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -39,14 +39,14 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
     public boolean onCommand(@NonNull CommandSender sender, @NonNull Command cmd, @NonNull String label, String @NonNull [] args) {
 
         if (sender instanceof Player player) {
-            if (!player.isOp() && !player.hasPermission("kakchuplugin.admin")) {
+            if (!player.isOp() && !player.hasPermission("shamplugin.admin")) {
                 sender.sendMessage("§cYou do not have permission.");
                 return true;
             }
         }
 
         if (args.length < 2) {
-            sender.sendMessage("§cUsage: /kakchureward <player> <type>");
+            sender.sendMessage("§cUsage: /sham reward <player> <type>");
             return true;
         }
 
@@ -129,7 +129,7 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public List<String> onTabComplete(@NonNull CommandSender sender, @NonNull Command cmd, @NonNull String alias, String @NonNull [] args) {
-        if (!cmd.getName().equalsIgnoreCase("kakchureward")) return Collections.emptyList();
+        if (!cmd.getName().equalsIgnoreCase("streakreward")) return Collections.emptyList();
 
         if (args.length == 1) {
             List<String> names = Bukkit.getOnlinePlayers().stream()

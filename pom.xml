@@ -4,13 +4,13 @@
                              http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>win.kakchuserver</groupId>
-    <artifactId>kakchuplugin</artifactId>
-    <version>26.1.0 Beta-1</version>
+    <groupId>win.shamserver</groupId>
+    <artifactId>ShamPlugin</artifactId>
+    <version>26.1.0 Beta-2</version>
     <packaging>jar</packaging>
 
-    <name>kakchuplugin</name>
-    <url>https://kakchuserver.win</url>
+    <name>shamplugin</name>
+    <url>https://shamserver.win</url>
 
     <licenses>
         <license>
@@ -164,11 +164,11 @@
                             <relocations>
                                 <relocation>
                                     <pattern>net.dv8tion</pattern>
-                                    <shadedPattern>win.kakchuserver.shaded.jda</shadedPattern>
+                                    <shadedPattern>win.shamserver.shaded.jda</shadedPattern>
                                 </relocation>
                                 <relocation>
                                     <pattern>okhttp3</pattern>
-                                    <shadedPattern>win.kakchuserver.shaded.okhttp</shadedPattern>
+                                    <shadedPattern>win.shamserver.shaded.okhttp</shadedPattern>
                                 </relocation>
                             </relocations>
                             <transformers>

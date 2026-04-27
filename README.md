@@ -1,4 +1,4 @@
-# This plugin is still in development. any features may break or be removed at any time.
+# This plugin is still in development. Any features may break or be removed at any time.
 
 ## Modrinth Page:
 
@@ -14,13 +14,13 @@
 
 ## Plugin Information:
 
-this projects has used AI in its development.
+Known working versions: 1.2.11 and 26.1.2 purpur
 
-known working versions: 1.2.11 and 26.1.2 purpur
+This projects has used AI in its development.
 
 ## Dependencies
 ### Hard Dependencies (required)
-* none
+* None
 ### Soft Dependencies (optional)
 * PlaceholderAPI
 * AxRewards
