@@ -9,7 +9,6 @@ import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
-import org.jspecify.annotations.NonNull;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -45,7 +44,7 @@ import java.util.logging.Level;
  * Config keys:
  * uptime:
  *   flush-interval-seconds: 1
- *   retention-days: 370   # -1 = keep forever
+ *   retention-days: -1   # -1 = keep forever
  *   merge-gap-ms: 1000
  */
 public class UptimeTracker {
@@ -764,14 +763,6 @@ public class UptimeTracker {
                 label = "This year";
                 break;
             }
-            case "all":
-            case "overall": {
-                long trackedSince = cfg.getLong(KEY_ALLTIME_SINCE, now);
-                uptimeSeconds = computeOverlap(trackedSince, now);
-                periodPossibleSeconds = Math.max(0L, (now - trackedSince) / 1000L);
-                label = "All";
-                break;
-            }
             case "alltime": {
                 long trackedSince = cfg.getLong(KEY_ALLTIME_SINCE, now);
                 uptimeSeconds = computeOverlap(trackedSince, now);
@@ -923,13 +914,13 @@ public class UptimeTracker {
         }
 
         @Override
-        public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String @NonNull [] args) {
-            if (args.length == 0) {
+        public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String [] args) {
+            if ((args.length == 0) || args[0].equalsIgnoreCase("all")) {
                 sendSummary(sender, "day");
                 sendSummary(sender, "week");
                 sendSummary(sender, "month");
                 sendSummary(sender, "year");
-                sendSummary(sender, "all");
+                sendSummary(sender, "alltime");
                 sendSummary(sender, "24h");
                 sendSummary(sender, "7d");
                 sendSummary(sender, "30d");
@@ -942,8 +933,7 @@ public class UptimeTracker {
             if (period.equals("w")) period = "week";
             if (period.equals("m")) period = "month";
             if (period.equals("y")) period = "year";
-            if (period.equals("a")) period = "alltime";
-            if (period.equals("all")) period = "all";
+            if (period.equals("alltime") || period.equals("a")) period = "alltime";
             if (period.equals("24") || period.equals("1d") || period.equals("past24") || period.equals("pastday")) period = "24h";
             if (period.equals("7") || period.equals("1w") || period.equals("past7") || period.equals("pastweek") || period.equals("1week")) period = "7d";
             if (period.equals("30") || period.equals("1m") || period.equals("past30") || period.equals("pastmonth") || period.equals("1month")) period = "30d";

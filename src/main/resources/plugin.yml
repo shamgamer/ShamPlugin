@@ -25,8 +25,8 @@ commands:
     permission-message: You do not have permission to use this command.
 
   uptime:
-    description: Shows server uptime statistics (day/week/month/year/all-time)
-    usage: /sham uptime
+    description: Shows server uptime statistics (day/week/month/year/all-time/24h/7d/30d/365d)
+    usage: /sham uptime <period> # all /sham based commands not yet updated
     aliases: []
     permission: shamplugin.uptime
     permission-message: You do not have permission to use this command.
@@ -50,10 +50,16 @@ commands:
     permission-message: You do not have permission to use this command.
 
   streakset:
-    description: Set a player's streak
+    description: Set a player's streak (admin)
     usage: /sham streak set <player> <value>
     permission: shamplugin.admin
     permission-message: You do not have permission to use this command.
+
+#  streakget: !not added yet!
+#    description: Shows another player's login streak.
+#    usage: /sham streak get <player>
+#    permission: shamplugin.admin
+#    permission-message: You do not have permission to use this command.
 
   streakreward:
     description: Trigger login reward processing (admin)
