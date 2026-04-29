@@ -6,7 +6,7 @@
 
     <groupId>win.shamserver</groupId>
     <artifactId>ShamPlugin</artifactId>
-    <version>26.1.0 Beta-3</version>
+    <version>26.1.0 Beta-4</version>
     <packaging>jar</packaging>
 
     <name>shamplugin</name>
