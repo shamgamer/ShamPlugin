@@ -37,7 +37,10 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public boolean onCommand(@NonNull CommandSender sender, @NonNull Command cmd, @NonNull String label, String @NonNull [] args) {
+        return handleReward(sender, args);
+    }
 
+    public boolean handleReward(@NonNull CommandSender sender, String @NonNull [] args) {
         if (sender instanceof Player player) {
             if (!player.isOp() && !player.hasPermission("shamplugin.admin")) {
                 sender.sendMessage("§cYou do not have permission.");
@@ -46,7 +49,7 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length < 2) {
-            sender.sendMessage("§cUsage: /sham reward <player> <type>");
+            sender.sendMessage("§cUsage: /sham streak reward <player> <type>");
             return true;
         }
 
@@ -129,20 +132,26 @@ public class RewardCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public List<String> onTabComplete(@NonNull CommandSender sender, @NonNull Command cmd, @NonNull String alias, String @NonNull [] args) {
-        if (!cmd.getName().equalsIgnoreCase("streakreward")) return Collections.emptyList();
-
         if (args.length == 1) {
-            List<String> names = Bukkit.getOnlinePlayers().stream()
-                    .map(Player::getName)
-                    .collect(Collectors.toList());
-            return StringUtil.copyPartialMatches(args[0], names, new ArrayList<>());
+            return completePlayerNames(args[0]);
         }
 
         if (args.length == 2) {
-            return StringUtil.copyPartialMatches(args[1], getRewardTypes(), new ArrayList<>());
+            return completeRewardTypes(args[1]);
         }
 
         return Collections.emptyList();
+    }
+
+    public List<String> completePlayerNames(String input) {
+        List<String> names = Bukkit.getOnlinePlayers().stream()
+                .map(Player::getName)
+                .collect(Collectors.toList());
+        return StringUtil.copyPartialMatches(input, names, new ArrayList<>());
+    }
+
+    public List<String> completeRewardTypes(String input) {
+        return StringUtil.copyPartialMatches(input, getRewardTypes(), new ArrayList<>());
     }
 
     private String resolveTypePath(String typeInput) {

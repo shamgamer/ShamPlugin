@@ -83,7 +83,7 @@ public class LoginStreakManager {
     public LoginStreakManager(JavaPlugin plugin) {
         this.plugin = plugin;
         this.dbExecutor = Executors.newSingleThreadExecutor(r -> {
-            Thread thread = new Thread(r, "sham-StreakDb");
+            Thread thread = new Thread(r, "Sham-StreakDb");
             thread.setDaemon(true);
             return thread;
         });

@@ -907,6 +907,11 @@ public class UptimeTracker {
     }
 
     public static class UptimeCommand implements CommandExecutor, TabCompleter {
+        private static final List<String> PERIOD_OPTIONS = List.of(
+                "day", "week", "month", "year", "all", "alltime",
+                "24h", "7d", "30d", "365d"
+        );
+
         private final UptimeTracker tracker;
 
         public UptimeCommand(UptimeTracker tracker) {
@@ -915,6 +920,10 @@ public class UptimeTracker {
 
         @Override
         public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String [] args) {
+            return handleCommand(sender, args);
+        }
+
+        public boolean handleCommand(@NotNull CommandSender sender, @NotNull String[] args) {
             if ((args.length == 0) || args[0].equalsIgnoreCase("all")) {
                 sendSummary(sender, "day");
                 sendSummary(sender, "week");
@@ -940,7 +949,7 @@ public class UptimeTracker {
             if (period.equals("365") || period.equals("1y") || period.equals("past365") || period.equals("pastyear") || period.equals("1year")) period = "365d";
 
             if (period.equals("help")) {
-                sender.sendMessage("/uptime [day|week|month|year|all|alltime|24h|7d|30d|365d]");
+                sender.sendMessage("/sham uptime [day|week|month|year|all|alltime|24h|7d|30d|365d]");
                 return true;
             }
 
@@ -957,16 +966,15 @@ public class UptimeTracker {
                 return Collections.emptyList();
             }
 
-            List<String> options = List.of(
-                    "day", "week", "month", "year", "all", "alltime",
-                    "24h", "7d", "30d", "365d"
-            );
+            return completePeriods(args[0]);
+        }
 
-            String input = args[0].toLowerCase(Locale.ROOT);
+        public List<String> completePeriods(@NotNull String input) {
+            String normalizedInput = input.toLowerCase(Locale.ROOT);
             List<String> matches = new ArrayList<>();
 
-            for (String option : options) {
-                if (option.startsWith(input)) {
+            for (String option : PERIOD_OPTIONS) {
+                if (option.startsWith(normalizedInput)) {
                     matches.add(option);
                 }
             }

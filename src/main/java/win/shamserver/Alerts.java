@@ -326,7 +326,7 @@ public class Alerts extends Handler {
             LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
             Configuration config = ctx.getConfiguration();
 
-            String name = "shamDiscordAlerts-" + System.identityHashCode(this);
+            String name = "ShamDiscordAlerts-" + System.identityHashCode(this);
             DiscordLog4jAppender app = new DiscordLog4jAppender(name, this);
             app.start();
 

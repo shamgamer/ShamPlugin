@@ -7,9 +7,13 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.util.StringUtil;
 import org.jspecify.annotations.NonNull;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 public class StreakCommands implements CommandExecutor {
 
@@ -23,29 +27,10 @@ public class StreakCommands implements CommandExecutor {
 
     @Override
     public boolean onCommand(@NonNull CommandSender sender, Command cmd, @NonNull String label, String @NonNull [] args) {
-
         String name = cmd.getName().toLowerCase();
 
         if (name.equals("streak")) {
-            if (!(sender instanceof Player player)) return true;
-
-            manager.getStatusAsync(player.getUniqueId(), player.getName())
-                    .whenComplete((status, throwable) -> Bukkit.getScheduler().runTask(plugin, () -> {
-                        if (!player.isOnline()) {
-                            return;
-                        }
-                        if (throwable != null) {
-                            plugin.getLogger().warning("Failed to load streak for " + player.getName() + ": " + throwable.getMessage());
-                            player.sendMessage("§cCould not load your streak right now.");
-                            return;
-                        }
-
-                        Duration graceReset = manager.getTimeUntilGraceReset();
-                        player.sendMessage("§aAvailable graces: §e" + status.availableGraces() + "/" + status.maxGraces() + " §7(" + formatDuration(status.timeUntilReset()) + ")");
-                        player.sendMessage("§aGraces reset in: §e" + formatDuration(graceReset));
-                        player.sendMessage("§aActive Streak: §e" + status.current() + " §7| §aHighest Streak: §e" + status.highest());
-                    }));
-            return true;
+            return handleSelfStatus(sender);
         }
 
         if (name.equals("streaktop")) {
@@ -108,55 +93,110 @@ public class StreakCommands implements CommandExecutor {
             return true;
         }
 
-        if (name.equals("streakset")) {
+        return true;
+    }
 
-            if (!sender.isOp() && !sender.hasPermission("shamplugin.admin")) {
-                sender.sendMessage("§cYou do not have permission.");
-                return true;
-            }
-
-            if (args.length < 2) {
-                sender.sendMessage("§cUsage: /sham streak set <player> <value>");
-                return true;
-            }
-
-            String targetName = args[0];
-            OfflinePlayer offline = plugin.getServer().getOfflinePlayer(targetName);
-
-            if (offline == null || (!offline.isOnline() && !offline.hasPlayedBefore())) {
-                sender.sendMessage("§cPlayer not found.");
-                return true;
-            }
-
-            int value;
-            try {
-                value = Integer.parseInt(args[1]);
-            } catch (NumberFormatException e) {
-                sender.sendMessage("§cInvalid number.");
-                return true;
-            }
-
-            if (value < 0) {
-                sender.sendMessage("§cStreak value cannot be negative.");
-                return true;
-            }
-
-            String resolvedName = offline.getName() != null ? offline.getName() : targetName;
-            manager.setStreakAsync(offline.getUniqueId(), resolvedName, value)
-                    .whenComplete((streak, throwable) -> Bukkit.getScheduler().runTask(plugin, () -> {
-                        if (throwable != null) {
-                            plugin.getLogger().warning("Failed to set streak for " + resolvedName + ": " + throwable.getMessage());
-                            sender.sendMessage("§cCould not set the streak for " + resolvedName + ".");
-                            return;
-                        }
-
-                        sender.sendMessage("§aSet " + resolvedName + "'s streak to " + streak.current);
-                    }));
-
+    public boolean handleSelfStatus(@NonNull CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("§cOnly players can use /sham streak.");
             return true;
         }
 
+        return handleStatusLookup(sender, player, player.getUniqueId(), player.getName(), true);
+    }
+
+    public boolean handleGetStatus(@NonNull CommandSender sender, @NonNull String targetName) {
+        OfflinePlayer offline = plugin.getServer().getOfflinePlayer(targetName);
+        if (offline == null || (!offline.isOnline() && !offline.hasPlayedBefore())) {
+            sender.sendMessage("§cPlayer not found.");
+            return true;
+        }
+
+        String resolvedName = offline.getName() != null ? offline.getName() : targetName;
+        return handleStatusLookup(sender, offline.getPlayer(), offline.getUniqueId(), resolvedName, false);
+    }
+
+    public boolean handleSet(@NonNull CommandSender sender, String @NonNull [] args) {
+        if (args.length < 2) {
+            sender.sendMessage("§cUsage: /sham streak set <player> <value>");
+            return true;
+        }
+
+        String targetName = args[0];
+        OfflinePlayer offline = plugin.getServer().getOfflinePlayer(targetName);
+
+        if (offline == null || (!offline.isOnline() && !offline.hasPlayedBefore())) {
+            sender.sendMessage("§cPlayer not found.");
+            return true;
+        }
+
+        int value;
+        try {
+            value = Integer.parseInt(args[1]);
+        } catch (NumberFormatException e) {
+            sender.sendMessage("§cInvalid number.");
+            return true;
+        }
+
+        if (value < 0) {
+            sender.sendMessage("§cStreak value cannot be negative.");
+            return true;
+        }
+
+        String resolvedName = offline.getName() != null ? offline.getName() : targetName;
+        manager.setStreakAsync(offline.getUniqueId(), resolvedName, value)
+                .whenComplete((streak, throwable) -> Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (throwable != null) {
+                        plugin.getLogger().warning("Failed to set streak for " + resolvedName + ": " + throwable.getMessage());
+                        sender.sendMessage("§cCould not set the streak for " + resolvedName + ".");
+                        return;
+                    }
+
+                    sender.sendMessage("§aSet " + resolvedName + "'s streak to " + streak.current);
+                }));
+
         return true;
+    }
+
+    public List<String> completePlayerNames(@NonNull String input) {
+        List<String> names = Bukkit.getOnlinePlayers().stream()
+                .map(Player::getName)
+                .toList();
+        return StringUtil.copyPartialMatches(input, names, new ArrayList<>());
+    }
+
+    private boolean handleStatusLookup(@NonNull CommandSender sender,
+                                       Player player,
+                                       @NonNull UUID uuid,
+                                       @NonNull String resolvedName,
+                                       boolean self) {
+        manager.getStatusAsync(uuid, resolvedName)
+                .whenComplete((status, throwable) -> Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (player != null && !player.isOnline()) {
+                        return;
+                    }
+                    if (throwable != null) {
+                        plugin.getLogger().warning("Failed to load streak for " + resolvedName + ": " + throwable.getMessage());
+                        sender.sendMessage(self ? "§cCould not load your streak right now." : "§cCould not load the streak for " + resolvedName + ".");
+                        return;
+                    }
+
+                    sendStatusMessage(sender, resolvedName, status, self);
+                }));
+        return true;
+    }
+
+    private void sendStatusMessage(@NonNull CommandSender sender,
+                                   @NonNull String resolvedName,
+                                   LoginStreakManager.StreakStatus status,
+                                   boolean self) {
+        Duration graceReset = manager.getTimeUntilGraceReset();
+        if (!self) {
+            sender.sendMessage("§6Streak for " + resolvedName + ":");
+        }
+        sender.sendMessage("§aAvailable graces: §e" + status.availableGraces() + "/" + status.maxGraces() + " §7(" + formatDuration(status.timeUntilReset()) + ")");
+        sender.sendMessage("§aGraces reset in: §e" + formatDuration(graceReset));
+        sender.sendMessage("§aActive Streak: §e" + status.current() + " §7| §aHighest Streak: §e" + status.highest());
     }
 
     private String formatDuration(Duration duration) {

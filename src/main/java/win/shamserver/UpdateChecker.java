@@ -19,8 +19,6 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 public final class UpdateChecker implements Runnable {
-    private static final ObjectMapper JSON = new ObjectMapper();
-
     // Parses leading core versions like 2.5.6 or 3.0.0.1
     private static final Pattern CORE_VERSION = Pattern.compile("^(\\d+)(?:\\.(\\d+))?(?:\\.(\\d+))?(?:\\.(\\d+))?");
 
@@ -69,7 +67,8 @@ public final class UpdateChecker implements Runnable {
                 return;
             }
 
-            JsonNode arr = JSON.readTree(res.body());
+            ObjectMapper json = new ObjectMapper();
+            JsonNode arr = json.readTree(res.body());
             if (!arr.isArray() || arr.isEmpty()) {
                 // Successful request but no usable data -> clear stale cached update
                 plugin.clearUpdateAvailable();
@@ -116,16 +115,16 @@ public final class UpdateChecker implements Runnable {
             }
             if (downloadUrl == null) downloadUrl = "";
 
-            // Player-friendly multi-line, colored message (each line starts with a color code).
+            // Player-friendly multi-line, colored message.
             String playerMsg =
-                    "§2shamPlugin Update!\n" +
+                    "§2ShamPlugin Update!\n" +
                             "§7Installed: §c" + current + "\n" +
                             "§7Latest: §a" + latestNumber + "\n" +
                             "§b" + downloadUrl;
 
             // Console-friendly (no color codes, single line)
             String consoleMsg =
-                    "shamPlugin update available! Installed: " + current +
+                    "ShamPlugin update available! Installed: " + current +
                             " | Latest: " + latestNumber +
                             (downloadUrl.isBlank() ? "" : " | Download: " + downloadUrl);
 
@@ -146,7 +145,7 @@ public final class UpdateChecker implements Runnable {
                 }
             });
 
-        } catch (Exception e) {
+        } catch (Throwable e) {
             if (notifyConsole) plugin.getLogger().warning("Update check failed: " + e.getMessage());
             // Don't clear cached update on transient exception
         }

@@ -10,6 +10,11 @@ softdepend:
   - AxRewards
 
 commands:
+  sham:
+    description: Root command for ShamPlugin commands
+    usage: /sham <streak|uptime> ...
+    aliases: []
+
   map:
     description: Links to the server's web world map
     usage: /map
@@ -22,13 +27,6 @@ commands:
     usage: /help
     aliases: [commands]
     permission: shamplugin.help
-    permission-message: You do not have permission to use this command.
-
-  uptime:
-    description: Shows server uptime statistics (day/week/month/year/all-time/24h/7d/30d/365d)
-    usage: /sham uptime <period> # all /sham based commands not yet updated
-    aliases: []
-    permission: shamplugin.uptime
     permission-message: You do not have permission to use this command.
 
   streak:
@@ -49,24 +47,6 @@ commands:
     permission: shamplugin.streak
     permission-message: You do not have permission to use this command.
 
-  streakset:
-    description: Set a player's streak (admin)
-    usage: /sham streak set <player> <value>
-    permission: shamplugin.admin
-    permission-message: You do not have permission to use this command.
-
-#  streakget: !not added yet!
-#    description: Shows another player's login streak.
-#    usage: /sham streak get <player>
-#    permission: shamplugin.admin
-#    permission-message: You do not have permission to use this command.
-
-  streakreward:
-    description: Trigger login reward processing (admin)
-    usage: /sham streak reward <player> <type>
-    permission: shamplugin.admin
-    permission-message: You do not have permission to use this command.
-
 permissions:
 
   shamplugin.map:
@@ -78,7 +58,7 @@ permissions:
     default: true
 
   shamplugin.uptime:
-    description: Allows usage of /uptime command
+    description: Allows usage of /sham uptime command
     default: true
 
   shamplugin.loginrewards:
@@ -86,11 +66,10 @@ permissions:
     default: true
 
   shamplugin.streak:
-    description: Allows usage of /streak and /streaktop and /higheststreaktop
+    description: Allows usage of /streak, /sham streak, /streaktop and /higheststreaktop
     default: true
 
   shamplugin.admin:
     description: Admin commands
     default: op
-
 build-time: ${build.time}
