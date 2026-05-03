@@ -151,7 +151,7 @@ public class Commands implements CommandExecutor {
             }
         }
 
-        // Footer with clickable Prev / Next for players, console receives plain hint
+        // Footer with clickable Prev / Next for players
         if (totalPages > 1) {
             if (sender instanceof org.bukkit.entity.Player) {
                 int prev = Math.max(1, page - 1);
@@ -166,7 +166,7 @@ public class Commands implements CommandExecutor {
                     prevComp.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text("§7Go to page " + prev)));
                     footer.addExtra(prevComp);
                 } else {
-                    // disabled grey prev
+                    // disabled gray prev
                     footer.addExtra(new TextComponent("§7« Prev "));
                 }
 
@@ -185,11 +185,12 @@ public class Commands implements CommandExecutor {
                 }
 
                 sender.spigot().sendMessage(footer);
-                // small usage hint
-                sender.spigot().sendMessage(new TextComponent("§7Click a command to place it in chat. Click the arrows to navigate pages."));
-            } else {
-                // Console fallback
-                sendMessage(sender, "§7Use §b/help <page> §7to view other pages.");
+                // small usage hint, checks if help hint is enabled, if it is checks if not only page 1 or is page 1 then sends the hint.
+                var cfg = Manager.getInstance().getConfig();
+                if (cfg.getBoolean("show-help-hint", true)
+                    && (!cfg.getBoolean("hint-page1-only", true) || page == 1)) {
+                        sender.spigot().sendMessage(new TextComponent(cfg.getString("help-hint","§7Click a command to place it in chat. Click the arrows to navigate pages.")));
+                }
             }
         }
     }

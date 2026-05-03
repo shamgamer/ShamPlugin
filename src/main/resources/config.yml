@@ -23,7 +23,7 @@ uptime:
   retention-days: -1 # the amount of days it keeps uptime logs, -1 is infinite.
   merge-gap-ms: 1000
 
-# !!DEPRECATED!! restarter will no longer receive updates and will be removed in version 26.3.0
+# !!DEPRECATED!! restarter will no longer receive updates and will be removed in version 27.1.0
 restarter: # All values are in server ticks, minecraft usually runs at 20 ticks per second.
   start-delay-ticks: 432000   # default 6 hours (432000 ticks)
   interval-ticks: 10          # default 0.5 seconds (10 ticks)
@@ -152,15 +152,18 @@ axrewards:
 help:
   # How many chat lines to show per page
   lines-per-page: 3
-
   # Maximum visible characters allowed per chat line when packing commands.
   max-line-chars: 45
-
   # Maximum number of commands to show on a single chat line
   max-per-line: 5
-
   # Force a second item onto a line even if it exceeds max-line-chars
   force-second-item: true
+  # Show navigation and usage hint for /help
+  show-help-hint: true
+  # Show hint only on page 1, requires show-help-hint to be true
+  hint-page1-only: true
+  # The text that will be displayed for hint in /help, requires show-help-hint to be true
+  help-hint: "§7Click a command to place it in chat. Click the arrows to navigate pages."
 
   # Description is hovered text, command is displayed and when clicked it places it in the chat line without sending.
   entries:

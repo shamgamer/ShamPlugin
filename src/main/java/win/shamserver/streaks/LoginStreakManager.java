@@ -193,13 +193,11 @@ public class LoginStreakManager {
             if (value <= 0) {
                 streak.current = 0;
                 streak.lastClaim = 0;
-                streak.graceUsed = 0;
-                streak.graceWeek = currentGraceCycle;
             } else {
                 streak.lastClaim = now;
-                streak.graceUsed = 0;
-                streak.graceWeek = currentGraceCycle;
             }
+            streak.graceUsed = 0;
+            streak.graceWeek = currentGraceCycle;
 
             saveInternal(streak);
             return streak.copy();
@@ -615,7 +613,6 @@ public class LoginStreakManager {
         int rawDay = Math.max(0, Math.min(6, getConfigIntWithFallback("grace_reset_day", 0)));
 
         return switch (rawDay) {
-            case 0 -> DayOfWeek.SUNDAY;
             case 1 -> DayOfWeek.MONDAY;
             case 2 -> DayOfWeek.TUESDAY;
             case 3 -> DayOfWeek.WEDNESDAY;
