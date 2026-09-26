@@ -347,11 +347,11 @@ public class LoginStreakManager {
         try {
             GraceOverrideResolver resolver = LuckPermsGraceOverrideResolver.tryCreate(plugin.getServer());
             if (resolver != null) {
-                plugin.getLogger().info("LuckPerms grace override support enabled.");
+                plugin.getLogger().info("✅ LuckPerms grace override support enabled.");
             }
             return resolver;
         } catch (Throwable throwable) {
-            plugin.getLogger().warning("Failed to hook LuckPerms grace override support: " + throwable.getMessage());
+            plugin.getLogger().warning("❌ Failed to hook LuckPerms grace override support: " + throwable.getMessage());
             return null;
         }
     }
@@ -894,7 +894,7 @@ public class LoginStreakManager {
     }
 
     private DayOfWeek getConfiguredGraceResetDayOfWeek() {
-        int rawDay = Math.max(0, Math.min(6, getConfigIntWithFallback("grace_reset_day", 0)));
+        int rawDay = Math.clamp(getConfigIntWithFallback("grace_reset_day", 0), 0, 6);
 
         return switch (rawDay) {
             case 1 -> DayOfWeek.MONDAY;
@@ -930,7 +930,7 @@ public class LoginStreakManager {
 
     private int readStoredGraceCycleKey(ResultSet rs) throws Exception {
         int storedGraceWeek = rs.getInt("grace_week");
-
+// old system used the week in the year causing issues with year changes, swap to new system
         if (storedGraceWeek <= 53 || storedGraceWeek >= 100000) {
             return getCurrentGraceCycleKey(currentEpochSecond());
         }

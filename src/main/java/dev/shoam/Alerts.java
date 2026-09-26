@@ -1,8 +1,9 @@
 package dev.shoam;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonSyntaxException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.LogEvent;
@@ -24,9 +25,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.channels.UnresolvedAddressException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.text.MessageFormat;
 import java.time.Duration;
 import java.time.Instant;
@@ -58,7 +56,7 @@ import java.util.regex.Pattern;
 
 public class Alerts extends Handler {
     private static final Logger LOGGER = Logger.getLogger(Alerts.class.getName());
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final Gson JSON = new Gson();
 
     private static final String SELF_LOGGER_NAME = Alerts.class.getName();
     private static final ThreadLocal<Boolean> IN_PUBLISH = ThreadLocal.withInitial(() -> Boolean.FALSE);
@@ -348,13 +346,6 @@ public class Alerts extends Handler {
 
         List<String> effectiveIgnore = (ignoreList == null) ? Collections.emptyList() : new ArrayList<>(ignoreList);
         if (effectiveIgnore.isEmpty()) {
-            List<String> disk = tryLoadIgnoreListFromDisk();
-            if (!disk.isEmpty()) {
-                effectiveIgnore = disk;
-                LOGGER.info("[Alerts] Loaded " + effectiveIgnore.size() + " ignore pattern(s) from config.yml on disk.");
-            }
-        }
-        if (effectiveIgnore.isEmpty()) {
             this.ignoreList = Collections.emptyList();
         } else {
             List<String> cleaned = new ArrayList<>(effectiveIgnore.size());
@@ -392,12 +383,20 @@ public class Alerts extends Handler {
                         throw new IllegalStateException("Discord webhook HTTP " + response.statusCode());
                     }
                     try {
-                        JsonNode webhook = JSON.readTree(response.body());
-                        return new WebhookInfo(webhook.path("channel_id").asText(), webhook.path("guild_id").asText(), webhook.path("name").asText());
-                    } catch (JsonProcessingException e) {
+                        JsonElement parsed = JSON.fromJson(response.body(), JsonElement.class);
+                        if (!(parsed instanceof JsonObject webhook)) {
+                            throw new IllegalStateException("Invalid Discord webhook response: expected a JSON object");
+                        }
+                        return new WebhookInfo(text(webhook, "channel_id"), text(webhook, "guild_id"), text(webhook, "name"));
+                    } catch (JsonSyntaxException e) {
                         throw new IllegalStateException("Invalid Discord webhook response", e);
                     }
                 });
+    }
+
+    private static String text(JsonObject obj, String key) {
+        JsonElement element = obj.get(key);
+        return element != null && !element.isJsonNull() ? element.getAsString() : "";
     }
 
     @Override
@@ -691,7 +690,7 @@ public class Alerts extends Handler {
             WebhookRequestPlan plan;
             try {
                 plan = buildRequestPlan(entry, mode);
-            } catch (JsonProcessingException e) {
+            } catch (JsonSyntaxException e) {
                 return SendResult.failure(false, true, false, 0L, "Failed to serialize Discord webhook payload: " + e.getMessage());
             } catch (Throwable t) {
                 return SendResult.failure(false, true, false, 0L, "Failed to build Discord webhook payload: " + t.getMessage());
@@ -760,7 +759,7 @@ public class Alerts extends Handler {
         }
     }
 
-    private WebhookRequestPlan buildRequestPlan(AlertMessage entry, RenderMode mode) throws JsonProcessingException {
+    private WebhookRequestPlan buildRequestPlan(AlertMessage entry, RenderMode mode) {
         return switch (mode) {
             case EMBED -> buildEmbedPlan(entry);
             case PLAIN_WITH_FILE -> buildPlainPlan(entry, true);
@@ -768,7 +767,7 @@ public class Alerts extends Handler {
         };
     }
 
-    private WebhookRequestPlan buildEmbedPlan(AlertMessage entry) throws JsonProcessingException {
+    private WebhookRequestPlan buildEmbedPlan(AlertMessage entry) {
         EmbedBuildResult embedBuild = buildEmbed(entry);
         boolean shouldPing = shouldPing(entry.severity);
 
@@ -792,7 +791,7 @@ public class Alerts extends Handler {
         return new WebhookRequestPlan(primary, followUps);
     }
 
-    private WebhookRequestPlan buildPlainPlan(AlertMessage entry, boolean allowAttachment) throws JsonProcessingException {
+    private WebhookRequestPlan buildPlainPlan(AlertMessage entry, boolean allowAttachment) {
         String summary = buildPlainSummary(entry, false);
         String content = shouldPing(entry.severity) ? pingText : "";
         String combined = content.isBlank() ? summary : content + "\n\n" + summary;
@@ -900,7 +899,7 @@ public class Alerts extends Handler {
         );
     }
 
-    private List<PreparedWebhookRequest> buildOverflowFollowUpRequests(AlertMessage entry, OverflowSections overflow, boolean plainOnly) throws JsonProcessingException {
+    private List<PreparedWebhookRequest> buildOverflowFollowUpRequests(AlertMessage entry, OverflowSections overflow, boolean plainOnly) {
         if (overflow.isEmpty()) return Collections.emptyList();
 
         List<PreparedWebhookRequest> requests = new ArrayList<>();
@@ -928,8 +927,8 @@ public class Alerts extends Handler {
         return requests;
     }
 
-    private PreparedWebhookRequest buildJsonRequest(Map<String, Object> payload, String logSummary) throws JsonProcessingException {
-        String json = JSON.writeValueAsString(payload);
+    private PreparedWebhookRequest buildJsonRequest(Map<String, Object> payload, String logSummary) {
+        String json = JSON.toJson(payload);
         HttpRequest request = HttpRequest.newBuilder(webhookUri)
                 .timeout(Duration.ofSeconds(15))
                 .header("Content-Type", "application/json")
@@ -938,12 +937,12 @@ public class Alerts extends Handler {
         return new PreparedWebhookRequest(request, logSummary);
     }
 
-    private PreparedWebhookRequest buildMultipartRequest(Map<String, Object> payload, MultipartAttachment attachment, String logSummary) throws JsonProcessingException {
+    private PreparedWebhookRequest buildMultipartRequest(Map<String, Object> payload, MultipartAttachment attachment, String logSummary) {
         String boundary = "ShamPluginBoundary" + UUID.randomUUID().toString().replace("-", "");
         ByteArrayOutputStream output = new ByteArrayOutputStream();
 
         writeMultipartPart(output, boundary, "payload_json", null, "application/json; charset=UTF-8",
-                JSON.writeValueAsBytes(payload));
+                JSON.toJson(payload).getBytes(StandardCharsets.UTF_8));
         writeMultipartPart(output, boundary, "files[0]", attachment.filename, "text/plain; charset=UTF-8",
                 attachment.bytes);
         writeString(output, "--" + boundary + "--\r\n");
@@ -1352,7 +1351,7 @@ public class Alerts extends Handler {
         }
         if (seconds <= 0.0 && body != null && !body.isBlank()) {
             try {
-                Object parsed = JSON.readValue(body, Object.class);
+                Object parsed = JSON.fromJson(body, Object.class);
                 if (parsed instanceof Map<?, ?> map) {
                     Object retryAfter = map.get("retry_after");
                     if (retryAfter instanceof Number number) {
@@ -1485,171 +1484,5 @@ public class Alerts extends Handler {
             withWait = trimmed + (trimmed.contains("?") ? "&" : "?") + "wait=true";
         }
         return URI.create(withWait);
-    }
-
-    private List<String> tryLoadIgnoreListFromDisk() {
-        try {
-            Path pluginsDir = Paths.get("plugins");
-            if (!Files.isDirectory(pluginsDir)) return Collections.emptyList();
-
-            try (var stream = Files.walk(pluginsDir, 2)) {
-                for (Path path : (Iterable<Path>) stream::iterator) {
-                    if (!Files.isRegularFile(path)) continue;
-                    if (!path.getFileName().toString().equalsIgnoreCase("config.yml")) continue;
-
-                    String text;
-                    try {
-                        text = Files.readString(path, StandardCharsets.UTF_8);
-                    } catch (Throwable ignored) {
-                        continue;
-                    }
-
-                    String lower = text.toLowerCase(Locale.ROOT);
-                    if (!(lower.contains("discord alerts:") || lower.contains("discord:") || lower.contains("alerts:"))) continue;
-
-                    List<String> direct = extractYamlStringList(text, "discord alerts", "ignore");
-                    if (!direct.isEmpty()) return direct;
-
-                    List<String> legacyDiscord = extractYamlStringList(text, "discord", "ignore");
-                    if (!legacyDiscord.isEmpty()) return legacyDiscord;
-
-                    List<String> legacyAlerts = extractYamlStringList(text, "alerts", "ignore");
-                    if (!legacyAlerts.isEmpty()) return legacyAlerts;
-                }
-            }
-        } catch (Throwable ignored) {
-        }
-        return Collections.emptyList();
-    }
-
-    private List<String> extractYamlStringList(String yaml, String parentKey, String childKey) {
-        if (yaml == null || parentKey == null || childKey == null) return Collections.emptyList();
-
-        String[] lines = yaml.split("\r?\n");
-        int parentIndent = -1;
-        int childIndent = -1;
-        boolean inParent = false;
-        boolean inChild = false;
-
-        List<String> out = new ArrayList<>();
-
-        for (String line : lines) {
-            if (line == null) continue;
-
-            int hash = line.indexOf('#');
-            String effective = hash >= 0 ? line.substring(0, hash) : line;
-            if (effective.trim().isEmpty()) continue;
-
-            int indent = countIndent(effective);
-            String trimmed = effective.trim();
-
-            if (!inParent) {
-                if (isYamlKey(trimmed, parentKey)) {
-                    inParent = true;
-                    parentIndent = indent;
-                }
-                continue;
-            } else if (indent <= parentIndent && !isYamlKey(trimmed, parentKey)) {
-                break;
-            }
-
-            if (!inChild) {
-                if (indent > parentIndent && isYamlKey(trimmed, childKey)) {
-                    inChild = true;
-                    childIndent = indent;
-
-                    int colon = trimmed.indexOf(':');
-                    if (colon >= 0) {
-                        String after = trimmed.substring(colon + 1).trim();
-                        if (after.startsWith("[") && after.endsWith("]")) {
-                            List<String> inline = parseInlineYamlList(after);
-                            if (!inline.isEmpty()) out.addAll(inline);
-                            return out;
-                        }
-                    }
-                }
-                continue;
-            } else if (indent <= childIndent && !trimmed.startsWith("-")) {
-                break;
-            }
-
-            if (indent > childIndent && trimmed.startsWith("-")) {
-                String item = stripQuotes(trimmed.substring(1).trim());
-                if (!item.isEmpty()) out.add(item);
-            }
-        }
-        return out;
-    }
-
-    private int countIndent(String line) {
-        int i = 0;
-        while (i < line.length()) {
-            char c = line.charAt(i);
-            if (c == ' ') {
-                i++;
-            } else if (c == '\t') {
-                i += 2;
-            } else {
-                break;
-            }
-        }
-        return i;
-    }
-
-    private boolean isYamlKey(String trimmed, String key) {
-        if (trimmed == null || key == null) return false;
-        String normalized = key.trim();
-        if (normalized.isEmpty()) return false;
-        return trimmed.equals(normalized + ":") || trimmed.startsWith(normalized + ":");
-    }
-
-    private String stripQuotes(String value) {
-        if (value == null) return "";
-        String trimmed = value.trim();
-        if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
-            if (trimmed.length() >= 2) {
-                return trimmed.substring(1, trimmed.length() - 1).trim();
-            }
-        }
-        return trimmed;
-    }
-
-    private List<String> parseInlineYamlList(String bracketed) {
-        if (bracketed == null) return Collections.emptyList();
-        String trimmed = bracketed.trim();
-        if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return Collections.emptyList();
-        String inner = trimmed.substring(1, trimmed.length() - 1).trim();
-        if (inner.isEmpty()) return Collections.emptyList();
-
-        List<String> out = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        boolean inQuotes = false;
-        char quote = 0;
-
-        for (int i = 0; i < inner.length(); i++) {
-            char c = inner.charAt(i);
-            if (!inQuotes && (c == '"' || c == '\'')) {
-                inQuotes = true;
-                quote = c;
-                current.append(c);
-                continue;
-            }
-            if (inQuotes && c == quote) {
-                inQuotes = false;
-                current.append(c);
-                continue;
-            }
-            if (!inQuotes && c == ',') {
-                String item = stripQuotes(current.toString());
-                if (!item.isEmpty()) out.add(item);
-                current.setLength(0);
-                continue;
-            }
-            current.append(c);
-        }
-
-        String last = stripQuotes(current.toString());
-        if (!last.isEmpty()) out.add(last);
-        return out;
     }
 }

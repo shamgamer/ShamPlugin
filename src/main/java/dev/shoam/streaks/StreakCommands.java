@@ -27,82 +27,61 @@ public class StreakCommands implements CommandExecutor {
 
     @Override
     public boolean onCommand(@NonNull CommandSender sender, Command cmd, @NonNull String label, String @NonNull [] args) {
-        String name = cmd.getName().toLowerCase();
-
-        switch (name) {
-            case "streak" -> {
-                return handleSelfStatus(sender);
-            }
-            case "streaktop" -> {
-                if (!(sender instanceof Player player)) return true;
-
-                int limit = plugin.getConfig().getInt("axrewards.login-streaks.leaderboard_display_length", 10);
-                manager.getTopCurrentAsync(limit)
-                        .whenComplete((list, throwable) -> Bukkit.getScheduler().runTask(plugin, () -> {
-                            if (!player.isOnline()) {
-                                return;
-                            }
-                            if (throwable != null) {
-                                plugin.getLogger().warning("Failed to load current streak leaderboard: " + throwable.getMessage());
-                                player.sendMessage("§cCould not load the streak leaderboard right now.");
-                                return;
-                            }
-
-                            player.sendMessage("§6Top Login Streaks");
-                            if (list.isEmpty()) {
-                                player.sendMessage("§7No active streaks yet.");
-                                return;
-                            }
-
-                            int index = 1;
-                            for (PlayerStreak streak : list) {
-                                player.sendMessage("§e" + index + ". §f" + streak.username + " §7- §a" + streak.current);
-                                index++;
-                            }
-                        }));
-                return true;
-            }
-            case "higheststreaktop" -> {
-                if (!(sender instanceof Player player)) return true;
-
-                int limit = plugin.getConfig().getInt("axrewards.login-streaks.leaderboard_display_length", 10);
-                manager.getTopHighestAsync(limit)
-                        .whenComplete((list, throwable) -> Bukkit.getScheduler().runTask(plugin, () -> {
-                            if (!player.isOnline()) {
-                                return;
-                            }
-                            if (throwable != null) {
-                                plugin.getLogger().warning("Failed to load highest streak leaderboard: " + throwable.getMessage());
-                                player.sendMessage("§cCould not load the highest streak leaderboard right now.");
-                                return;
-                            }
-
-                            player.sendMessage("§6Highest Streaks");
-                            if (list.isEmpty()) {
-                                player.sendMessage("§7No streak history yet.");
-                                return;
-                            }
-
-                            int index = 1;
-                            for (PlayerStreak streak : list) {
-                                player.sendMessage("§e" + index + ". §f" + streak.username + " §7- §a" + streak.highest);
-                                index++;
-                            }
-                        }));
-                return true;
-            }
-        }
-
-        return true;
+        return handleSelfStatus(sender, cmd.getName().toLowerCase());
     }
 
     public boolean handleSelfStatus(@NonNull CommandSender sender) {
-        if (!(sender instanceof Player player)) {
-            sender.sendMessage("§cOnly players can use /streak.");
-            return true;
-        }
+        return handleSelfStatus(sender, "streak");
+    }
 
-        return handleStatusLookup(sender, player, player.getUniqueId(), player.getName(), true);
+    public boolean handleSelfStatus(@NonNull CommandSender sender, @NonNull String command) {
+        switch (command.toLowerCase()) {
+            case "streak" -> {
+                if (!(sender instanceof Player player)) {
+                    sender.sendMessage("§cOnly players can use /streak.");
+                    return true;
+                }
+                handleStatusLookup(sender, player, player.getUniqueId(), player.getName());
+            }
+            case "streaktop" -> {
+                int limit = plugin.getConfig().getInt("axrewards.login-streaks.leaderboard_display_length", 10);
+                sendLeaderboard(sender, manager.getTopCurrentAsync(limit), "Top Login Streaks", "No active streaks yet.", true);
+            }
+            case "higheststreaktop" -> {
+                int limit = plugin.getConfig().getInt("axrewards.login-streaks.leaderboard_display_length", 10);
+                sendLeaderboard(sender, manager.getTopHighestAsync(limit), "Highest Streaks", "No streak history yet.", false);
+            }
+        }
+        return true;
+    }
+
+    private void sendLeaderboard(@NonNull CommandSender sender,
+                                 @NonNull CompletableFuture<List<PlayerStreak>> future,
+                                 @NonNull String title,
+                                 @NonNull String emptyMessage,
+                                 boolean current) {
+        future.whenComplete((list, throwable) -> Bukkit.getScheduler().runTask(plugin, () -> {
+            if (sender instanceof Player player && !player.isOnline()) {
+                return;
+            }
+            if (throwable != null) {
+                plugin.getLogger().warning("Failed to load streak leaderboard: " + throwable.getMessage());
+                sender.sendMessage("§cCould not load the streak leaderboard right now.");
+                return;
+            }
+
+            sender.sendMessage("§6" + title);
+            if (list.isEmpty()) {
+                sender.sendMessage("§7" + emptyMessage);
+                return;
+            }
+
+            int index = 1;
+            for (PlayerStreak streak : list) {
+                sender.sendMessage("§e" + index + ". §f" + streak.username + " §7- §a" + (current ? streak.current : streak.highest));
+                index++;
+            }
+        }));
     }
 
     public boolean handleGetStatus(@NonNull CommandSender sender, @NonNull String targetName) {
@@ -185,11 +164,10 @@ public class StreakCommands implements CommandExecutor {
         return StringUtil.copyPartialMatches(input, names, new ArrayList<>());
     }
 
-    private boolean handleStatusLookup(@NonNull CommandSender sender,
-                                       Player player,
-                                       @NonNull UUID uuid,
-                                       @NonNull String resolvedName,
-                                       boolean self) {
+    private void handleStatusLookup(@NonNull CommandSender sender,
+                                    Player player,
+                                    @NonNull UUID uuid,
+                                    @NonNull String resolvedName) {
         manager.getStatusAsync(uuid, resolvedName, player)
                 .whenComplete((status, throwable) -> Bukkit.getScheduler().runTask(plugin, () -> {
                     if (player != null && !player.isOnline()) {
@@ -197,13 +175,12 @@ public class StreakCommands implements CommandExecutor {
                     }
                     if (throwable != null) {
                         plugin.getLogger().warning("Failed to load streak for " + resolvedName + ": " + throwable.getMessage());
-                        sender.sendMessage(self ? "§cCould not load your streak right now." : "§cCould not load the streak for " + resolvedName + ".");
+                        sender.sendMessage("§cCould not load your streak right now.");
                         return;
                     }
 
-                    sendStatusMessage(sender, resolvedName, status, self);
+                    sendStatusMessage(sender, resolvedName, status, true);
                 }));
-        return true;
     }
 
     private void handleExistingStatusLookup(@NonNull CommandSender sender, StreakTargetResolver.Target target) {

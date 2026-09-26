@@ -1,7 +1,9 @@
 package dev.shoam;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.jspecify.annotations.NonNull;
@@ -67,28 +69,29 @@ public final class UpdateChecker implements Runnable {
                 return;
             }
 
-            ObjectMapper json = new ObjectMapper();
-            JsonNode arr = json.readTree(res.body());
-            if (!arr.isArray() || arr.isEmpty()) {
+            Gson json = new Gson();
+            JsonElement parsed = json.fromJson(res.body(), JsonElement.class);
+            if (!(parsed instanceof JsonArray arr) || arr.isEmpty()) {
                 // Successful request but no usable data -> clear stale cached update
                 plugin.clearUpdateAvailable();
                 return;
             }
 
             // pick the newest acceptable version by date_published
-            List<JsonNode> candidates = new ArrayList<>();
-            for (JsonNode v : arr) {
-                String type = v.path("version_type").asText("");
+            List<JsonObject> candidates = new ArrayList<>();
+            for (JsonElement v : arr) {
+                if (!(v instanceof JsonObject obj)) continue;
+                String type = text(obj, "version_type");
                 if (!includePrerelease && !"release".equalsIgnoreCase(type)) continue;
-                candidates.add(v);
+                candidates.add(obj);
             }
             if (candidates.isEmpty()) {
                 plugin.clearUpdateAvailable();
                 return;
             }
 
-            JsonNode latest = candidates.stream()
-                    .max(Comparator.comparing(a -> a.path("date_published").asText("")))
+            JsonObject latest = candidates.stream()
+                    .max(Comparator.comparing(a -> text(a, "date_published")))
                     .orElse(null);
             //noinspection ConstantValue
             if (latest == null) {
@@ -96,7 +99,7 @@ public final class UpdateChecker implements Runnable {
                 return;
             }
 
-            String latestNumber = latest.path("version_number").asText("");
+            String latestNumber = text(latest, "version_number");
             if (latestNumber.isEmpty()) {
                 plugin.clearUpdateAvailable();
                 return;
@@ -152,16 +155,20 @@ public final class UpdateChecker implements Runnable {
         }
     }
 
-    private static String extractFirstFileUrl(JsonNode versionNode) {
+    private static String extractFirstFileUrl(JsonObject versionNode) {
         if (versionNode == null) return null;
-        JsonNode files = versionNode.path("files");
-        if (!files.isArray() || files.isEmpty()) return null;
+        JsonElement filesElement = versionNode.get("files");
+        if (!(filesElement instanceof JsonArray files) || files.isEmpty()) return null;
 
-        JsonNode first = files.get(0);
-        if (first == null) return null;
+        if (!(files.get(0) instanceof JsonObject first)) return null;
 
-        String url = first.path("url").asText("");
+        String url = text(first, "url");
         return url.isBlank() ? null : url;
+    }
+
+    private static String text(JsonObject obj, String key) {
+        JsonElement element = obj.get(key);
+        return element != null && !element.isJsonNull() ? element.getAsString() : "";
     }
 
     private static String buildModrinthVersionsUrl(String projectId, List<String> loaders, String mcVersion) {
@@ -313,7 +320,7 @@ public final class UpdateChecker implements Runnable {
                 case "d", "dev", "development", "s", "snapshot" -> 0;
                 case "a", "alpha" -> 1;
                 case "b", "beta" -> 2;
-                case "rc", "release-candidate" -> 3;
+                case "rc" -> 3;
                 default -> 4;
             };
 

@@ -16,7 +16,7 @@ import java.util.logging.Logger;
 public class Manager extends JavaPlugin {
 
     private static Manager instance;
-    private Alerts alertsHandler;
+    private volatile Alerts alertsHandler;
     private UptimeTracker tracker;
     private LoginStreakManager streakManager;
 
@@ -55,22 +55,24 @@ public class Manager extends JavaPlugin {
 
         saveDefaultConfig();
 
-        new VersionSupportChecker(this).logStartupReport();
+        try {
+            new VersionSupportChecker(this).logStartupReport(getConfig().getBoolean("debug", true));
+        } catch (Throwable t) {
+            warnOptionalFeatureLoadFailure("Version-Support-Checker", t);
+        }
 
         if (getConfig().getBoolean("discord alerts.enabled", true)) {
             enableDiscordAlertsEarly();
         }
 
-        //  getLogger().info("✅ Sham Plugin enabled!");
-
         if (getConfig().getBoolean("update-checker.enabled", true)) {
             try {
                 long hours = Math.max(1, getConfig().getLong("update-checker.interval-hours", 12));
                 long periodTicks = hours * 60L * 60L * 20L;
-                Bukkit.getScheduler().runTaskTimerAsynchronously(this, new UpdateChecker(this), 20L * 10L, periodTicks);
                 Bukkit.getPluginManager().registerEvents(new UpdateLoginNotifier(this), this);
+                Bukkit.getScheduler().runTaskTimerAsynchronously(this, new UpdateChecker(this), 20L * 10L, periodTicks);
             } catch (Throwable t) {
-                warnOptionalFeatureLoadFailure("❌ update checker ", t);
+                warnOptionalFeatureLoadFailure("Update-Checker", t);
             }
         }
 
@@ -78,9 +80,9 @@ public class Manager extends JavaPlugin {
             try {
                 tracker = new UptimeTracker(this);
                 tracker.start();
-            getLogger().info("✅ UptimeTracker started.");
-            } catch (Exception e) {
-            getLogger().log(Level.SEVERE, "❌ Failed to start UptimeTracker: " + e.getMessage(), e);
+                getLogger().info("✅ Uptime-Tracker enabled.");
+            } catch (Throwable t) {
+                warnOptionalFeatureLoadFailure("Uptime-Tracker", t);
                 tracker = null;
             }
         }
@@ -110,22 +112,28 @@ public class Manager extends JavaPlugin {
         }
 
         if (getConfig().getBoolean("axrewards.login-streaks.enabled", true)) {
-            streakManager = new LoginStreakManager(this);
-            if (!streakManager.init()) {
-                getLogger().severe("❌ Login streaks disabled because the streak database failed to initialize.");
-                streakManager.shutdown();
+            try {
+                streakManager = new LoginStreakManager(this);
+                if (!streakManager.init()) {
+                    getLogger().severe("❌ Login streaks disabled because the streak database failed to initialize.");
+                    streakManager.shutdown();
+                    streakManager = null;
+                } else {
+                    streakCommands = new StreakCommands(this, streakManager);
+                    rewardCommand = new RewardCommand(this, streakManager);
+                    new PlayerNotifier(this, streakManager).register();
+                }
+            } catch (Throwable t) {
+                warnOptionalFeatureLoadFailure("Login-Streaks", t);
                 streakManager = null;
-            } else {
-                streakCommands = new StreakCommands(this, streakManager);
-                rewardCommand = new RewardCommand(this, streakManager);
-
+            }
+            if (streakManager != null) {
                 Objects.requireNonNull(getCommand("streak"), "⚠️ Command 'streak' missing from plugin.yml").setExecutor(streakCommands);
                 Objects.requireNonNull(getCommand("streaktop"), "⚠️ Command 'streaktop' missing from plugin.yml").setExecutor(streakCommands);
                 Objects.requireNonNull(getCommand("higheststreaktop"), "⚠️ Command 'higheststreaktop' missing from plugin.yml").setExecutor(streakCommands);
-
-                new PlayerNotifier(this, streakManager).register();
             }
         }
+
 
         ShamCommand shamCommand = new ShamCommand(uptimeCommand, streakCommands, rewardCommand);
         Objects.requireNonNull(getCommand("sham"), "⚠️ Command 'sham' missing from plugin.yml").setExecutor(shamCommand);
@@ -174,9 +182,9 @@ public class Manager extends JavaPlugin {
             Logger rootLogger = Logger.getLogger("");
             rootLogger.addHandler(alertsHandler);
 
-            getLogger().info("✅ Discord alerts enabled.");
+            getLogger().info("✅ Discord-Alerts enabled.");
         } catch (Throwable t) {
-            warnOptionalFeatureLoadFailure("❌ Discord alerts ", t);
+            warnOptionalFeatureLoadFailure("Discord-Alerts", t);
         }
     }
 
@@ -221,11 +229,17 @@ public class Manager extends JavaPlugin {
         }
 
         if (alertsHandler != null) {
-            Logger rootLogger = Logger.getLogger("");
-            rootLogger.removeHandler(alertsHandler);
-            alertsHandler.close();
+            try {
+                Logger rootLogger = Logger.getLogger("");
+                rootLogger.removeHandler(alertsHandler);
+                alertsHandler.close();
+            } catch (Exception e) {
+                getLogger().log(Level.WARNING, "❌ Failed to stop Discord-Alerts cleanly: " + e.getMessage(), e);
+            }
+            alertsHandler = null;
         }
 
+        instance = null;
         getLogger().info("Sham Plugin disabled!");
     }
 

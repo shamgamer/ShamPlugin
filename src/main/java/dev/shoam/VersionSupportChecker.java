@@ -1,10 +1,12 @@
 package dev.shoam;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
-import org.bukkit.plugin.PluginDescriptionFile;
+import io.papermc.paper.plugin.configuration.PluginMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.net.URI;
@@ -19,7 +21,7 @@ public class VersionSupportChecker {
 
     private static final String VERSION_SUPPORT_URL =
             "https://raw.githubusercontent.com/shamgamer/ShamPlugin/refs/heads/master/versions.json";
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final Gson JSON = new Gson();
 
     private final JavaPlugin plugin;
     private final HttpClient httpClient;
@@ -35,33 +37,32 @@ public class VersionSupportChecker {
      * Writes the server implementation/version and every dependency declared in
      * plugin.yml to the console. This is informational only; it never prevents
      * ShamPlugin from enabling.
-     */
-    public void logStartupReport() {
-        logStartupReport(false);
-    }
 
-    /**
      * @param debug whether to write detailed compatibility lookup diagnostics to the console
      */
     public void logStartupReport(boolean debug) {
-        plugin.getLogger().info("Server version: " + Bukkit.getVersion());
-        plugin.getLogger().info("Minecraft version: " + Bukkit.getVersion().split("-")[0]);
-        plugin.getLogger().info("Bukkit API version: " + Bukkit.getBukkitVersion());
+        if (debug) {
+            plugin.getLogger().info("Server version: " + Bukkit.getVersion());
+            plugin.getLogger().info("Minecraft version: " + Bukkit.getVersion().split("-")[0]);
+            plugin.getLogger().info("Bukkit API version: " + Bukkit.getBukkitVersion());
+        }
 
-        PluginDescriptionFile description = plugin.getDescription();
-        Set<String> requiredDependencies = new LinkedHashSet<>(description.getDepend());
-        Set<String> optionalDependencies = new LinkedHashSet<>(description.getSoftDepend());
+        PluginMeta meta = plugin.getPluginMeta();
+        Set<String> requiredDependencies = new LinkedHashSet<>(meta.getPluginDependencies());
+        Set<String> optionalDependencies = new LinkedHashSet<>(meta.getPluginSoftDependencies());
 
-        logDependencies("Required dependency", requiredDependencies, true);
+        if (debug) { // under debug until required dependencies are added to pom.xml
+            logDependencies("Required dependency", requiredDependencies, true);
+        }
         logDependencies("Optional dependency", optionalDependencies, false);
 
         checkMinecraftVersionSupport(debug);
     }
 
     private void checkMinecraftVersionSupport(boolean debug) {
-        String pluginVersion = plugin.getDescription().getVersion().split("\\s+", 2)[0];
+        String pluginVersion = plugin.getPluginMeta().getVersion().split("\\s+", 2)[0];
         String minecraftVersion = Bukkit.getVersion().split("-")[0];
-        debug(debug, "Starting compatibility lookup: plugin version '" + plugin.getDescription().getVersion()
+        debug(debug, "Starting compatibility lookup: plugin version '" + plugin.getPluginMeta().getVersion()
                 + "' -> '" + pluginVersion + "', Server version '" + Bukkit.getVersion()
                 + "' -> Minecraft '" + minecraftVersion + "'.");
 
@@ -83,7 +84,13 @@ public class VersionSupportChecker {
                     return;
                 }
 
-                reportCompatibility(JSON.readTree(response.body()), pluginVersion, minecraftVersion, debug);
+                JsonElement parsed = JSON.fromJson(response.body(), JsonElement.class);
+                if (!(parsed instanceof JsonObject versions)) {
+                    debug(debug, "Version support data has an unexpected format (expected a JSON object).");
+                    return;
+                }
+
+                reportCompatibility(versions, pluginVersion, minecraftVersion, debug);
             } catch (Exception e) {
                 plugin.getLogger().warning("Could not retrieve ShamPlugin version support data: " + e.getMessage());
                 debug(debug, "Compatibility lookup failed with " + e.getClass().getSimpleName() + ".");
@@ -91,21 +98,21 @@ public class VersionSupportChecker {
         });
     }
 
-    private void reportCompatibility(JsonNode versions, String pluginVersion, String minecraftVersion, boolean debug) {
-        reportMinecraftSupport(versions.path("SupportedMinecraftVersions"), minecraftVersion, debug);
+    private void reportCompatibility(JsonObject versions, String pluginVersion, String minecraftVersion, boolean debug) {
+        reportMinecraftSupport(versions.get("SupportedMinecraftVersions"), minecraftVersion, debug);
 
-        JsonNode support = versions.path(pluginVersion);
-        if (!support.isObject()) {
+        JsonElement supportElement = versions.get(pluginVersion);
+        if (!(supportElement instanceof JsonObject support)) {
             debug(debug, "No versions.json entry exists for ShamPlugin " + pluginVersion + ".");
             warnUntested(pluginVersion, minecraftVersion);
             return;
         }
 
-        if (containsVersion(support.path("broken"), minecraftVersion)) {
+        if (containsVersion(support.get("broken"), minecraftVersion)) {
             debug(debug, "Minecraft " + minecraftVersion + " is listed under 'broken' for ShamPlugin " + pluginVersion + ".");
             plugin.getLogger().severe("ShamPlugin " + pluginVersion
                     + " is known to be BROKEN on Minecraft " + minecraftVersion + ".");
-        } else if (!containsVersion(support.path("working"), minecraftVersion)) {
+        } else if (!containsVersion(support.get("working"), minecraftVersion)) {
             debug(debug, "Minecraft " + minecraftVersion + " is in neither the 'working' nor 'broken' list for ShamPlugin "
                     + pluginVersion + ".");
             warnUntested(pluginVersion, minecraftVersion);
@@ -116,7 +123,7 @@ public class VersionSupportChecker {
         // A listed working version intentionally produces no compatibility message as there is no issue.
     }
 
-    private void reportMinecraftSupport(JsonNode supportedVersions, String minecraftVersion, boolean debug) {
+    private void reportMinecraftSupport(JsonElement supportedVersions, String minecraftVersion, boolean debug) {
         if (containsVersion(supportedVersions, minecraftVersion)) {
             debug(debug, "Minecraft " + minecraftVersion + " is still receiving ShamPlugin updates.");
             return;
@@ -133,13 +140,16 @@ public class VersionSupportChecker {
         }
     }
 
-    private boolean containsVersion(JsonNode versions, String minecraftVersion) {
-        if (!versions.isArray()) {
+    private boolean containsVersion(JsonElement versions, String minecraftVersion) {
+        if (!(versions instanceof JsonArray array)) {
             return false;
         }
 
-        for (JsonNode version : versions) {
-            if (matchesVersionRule(version.asText(), minecraftVersion)) {
+        for (JsonElement version : array) {
+            if (!version.isJsonPrimitive()) {
+                continue;
+            }
+            if (matchesVersionRule(version.getAsString(), minecraftVersion)) {
                 return true;
             }
         }
@@ -246,7 +256,7 @@ public class VersionSupportChecker {
 
             String status = dependency.isEnabled() ? "installed and enabled" : "installed but disabled";
             plugin.getLogger().info(type + " '" + dependencyName + "': " + status
-                    + " (version " + dependency.getDescription().getVersion() + ").");
+                    + " (version " + dependency.getPluginMeta().getVersion() + ").");
         }
     }
 }

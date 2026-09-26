@@ -1,4 +1,5 @@
-config-version: 2
+config-version: 3
+debug: false
 # config version is currently unused, planned for config version miss-match warnings and auto updates
 
 discord alerts:
@@ -123,7 +124,7 @@ axrewards:
     claim_period: "24h" # how much time must pass before grace is lose (example 24h: 24h for daily then another 24h to claim before grace used)
     default_grace_per_cycle: 2 # default number of missed claim windows players can skip without losing their streak
     # using a permission plugin give shamplugin.graces.<number> to override per player/rank, for example shamplugin.graces.3
-    grace_reset_period: "7d" # how often grace usage resets, counted from the day/time anchor below
+    grace_reset_period: "7d" # !Changing this may reset active streaks! how often grace usage resets, counted from the day/time anchor below (values bellow a day aren't recommended)
     grace_reset_day: 1 # anchor day for the grace reset cycle, 0 Sunday 6 Saturday
     grace_reset_time: 0:30 # anchor time of day (UTC) for the grace reset cycle
     leaderboard_update_interval_minutes: 10 # how often the /streaktop and /higheststreaktop update their info

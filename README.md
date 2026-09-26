@@ -1,4 +1,4 @@
-# This plugin is still in development. Features may break or be removed.
+# This paper plugin is still in development. Features may break or be removed.
 
 ## Modrinth Page:
 

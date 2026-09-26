@@ -6,7 +6,7 @@
 
     <groupId>dev.shoam</groupId>
     <artifactId>ShamPlugin</artifactId>
-    <version>26.3.0 RC 1</version>
+    <version>26.3.0</version>
     <packaging>jar</packaging>
     <name>shamplugin</name>
     <url>https://shoam.dev</url>
@@ -44,18 +44,18 @@
     </repositories>
 
     <dependencies>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <version>5.11.4</version>
-            <scope>test</scope>
-        </dependency>
-
         <!-- Paper API (provided by server) -->
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
             <version>1.21.11-R0.1-SNAPSHOT</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- Gson is provided by Paper at runtime -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.11.0</version>
             <scope>provided</scope>
         </dependency>
 
@@ -72,8 +72,6 @@
             <version>5.4</version>
             <scope>provided</scope>
         </dependency>
-
-
         <!-- Log4j2 (provided by Paper at runtime; needed at compile-time for the Log4j appender) -->
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
@@ -87,19 +85,6 @@
             <version>2.25.4</version>
             <scope>provided</scope>
         </dependency>
-
-        <!-- Jackson 2.15.x compatible with Java 21 -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-core</artifactId>
-            <version>2.21.1</version>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-            <version>2.21.1</version>
-        </dependency>
-
         <!-- JetBrains annotations -->
         <dependency>
             <groupId>org.jetbrains</groupId>
