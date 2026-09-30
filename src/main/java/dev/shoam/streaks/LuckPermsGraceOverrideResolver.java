@@ -51,7 +51,7 @@ final class LuckPermsGraceOverrideResolver implements GraceOverrideResolver {
     }
 
     private int resolveGraceOverride(Map<String, Boolean> permissionMap) {
-        int override = Integer.MAX_VALUE;
+        int override = -1;
 
         for (Map.Entry<String, Boolean> entry : permissionMap.entrySet()) {
             if (!Boolean.TRUE.equals(entry.getValue())) {
@@ -72,12 +72,12 @@ final class LuckPermsGraceOverrideResolver implements GraceOverrideResolver {
             try {
                 int parsed = Integer.parseInt(suffix);
                 if (parsed >= 0) {
-                    override = Math.min(override, parsed);
+                    override = Math.max(override, parsed);
                 }
             } catch (NumberFormatException ignored) {
             }
         }
 
-        return override == Integer.MAX_VALUE ? -1 : override;
+        return override;
     }
 }

@@ -6,7 +6,7 @@
 
     <groupId>dev.shoam</groupId>
     <artifactId>ShamPlugin</artifactId>
-    <version>26.3.0</version>
+    <version>26.3.1</version>
     <packaging>jar</packaging>
     <name>shamplugin</name>
     <url>https://shoam.dev</url>

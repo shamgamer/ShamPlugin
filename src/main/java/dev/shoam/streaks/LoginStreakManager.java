@@ -309,7 +309,7 @@ public class LoginStreakManager {
     }
 
     private int resolvePermissionGraceOverride(Player player) {
-        int override = Integer.MAX_VALUE;
+        int override = -1;
 
         for (PermissionAttachmentInfo permissionInfo : player.getEffectivePermissions()) {
             if (!permissionInfo.getValue()) {
@@ -330,13 +330,13 @@ public class LoginStreakManager {
             try {
                 int parsed = Integer.parseInt(suffix);
                 if (parsed >= 0) {
-                    override = Math.min(override, parsed);
+                    override = Math.max(override, parsed);
                 }
             } catch (NumberFormatException ignored) {
             }
         }
 
-        return override == Integer.MAX_VALUE ? -1 : override;
+        return override;
     }
 
     private GraceOverrideResolver createGraceOverrideResolver() {
